@@ -3,15 +3,19 @@
 //! Tauri backend: owns VM configs on disk, spawns/tracks `qemu-system-*`
 //! processes, and exposes lifecycle commands to the React frontend.
 
+mod proc_job;
 mod qemu;
 mod qmp;
 mod vm;
 
+use proc_job::KillOnExitJob;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Child;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 use vm::VmConfig;
 
@@ -24,9 +28,13 @@ struct RunningVm {
 }
 
 /// App-wide runtime state: name -> running process.
-#[derive(Default)]
 struct AppState {
     running: Mutex<HashMap<String, RunningVm>>,
+    /// Kills any assigned QEMU child if the app process dies (Windows).
+    job: Option<KillOnExitJob>,
+    /// Set once a graceful "shut everything down then exit" is in progress, so
+    /// the window-close handler doesn't kick it off twice.
+    shutting_down: AtomicBool,
 }
 
 /// Connection info the frontend needs to attach the noVNC viewer.
@@ -202,10 +210,13 @@ fn start_vm(
     let dir = app_data(&app)?;
     let cfg = vm::load(&dir, &name)?;
 
-    let mut running = state.running.lock().unwrap();
-    prune_dead(&mut running);
-    if running.contains_key(&name) {
-        return Err(format!("'{name}' is already running"));
+    // Quick "already running?" check (don't hold the lock across the spawn/wait).
+    {
+        let mut running = state.running.lock().unwrap();
+        prune_dead(&mut running);
+        if running.contains_key(&name) {
+            return Err(format!("'{name}' is already running"));
+        }
     }
 
     let ports = qemu::LaunchPorts {
@@ -215,10 +226,44 @@ fn start_vm(
     };
     let args = qemu::build_args(&cfg, &ports);
 
-    let child = std::process::Command::new(qemu::system_binary())
+    let mut child = std::process::Command::new(qemu::system_binary())
         .args(&args)
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to launch QEMU: {e}"))?;
+
+    // Tie the child to our lifetime so it can never be orphaned.
+    if let Some(job) = &state.job {
+        job.assign(&child);
+    }
+
+    // Bad args / missing acceleration usually make QEMU exit within a moment.
+    // Give it a beat, and if it died, surface its stderr instead of silently
+    // flipping the VM back to "stopped".
+    std::thread::sleep(Duration::from_millis(600));
+    if let Ok(Some(status)) = child.try_wait() {
+        let mut msg = String::new();
+        if let Some(mut err) = child.stderr.take() {
+            use std::io::Read;
+            let _ = err.read_to_string(&mut msg);
+        }
+        let msg = msg.trim();
+        return Err(if msg.is_empty() {
+            format!("QEMU exited immediately ({status}).")
+        } else {
+            format!("QEMU failed to start ({status}):\n{msg}")
+        });
+    }
+
+    // Still running: drain stderr in the background so the pipe can't fill and
+    // block QEMU.
+    if let Some(mut err) = child.stderr.take() {
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut sink = String::new();
+            let _ = err.read_to_string(&mut sink);
+        });
+    }
 
     let info = RunningInfo {
         name: name.clone(),
@@ -226,15 +271,23 @@ fn start_vm(
         vnc_display: ports.vnc_display,
         qmp_port: ports.qmp_port,
     };
-    running.insert(
-        name,
-        RunningVm {
-            child,
-            vnc_display: ports.vnc_display,
-            websocket_port: ports.websocket_port,
-            qmp_port: ports.qmp_port,
-        },
-    );
+    {
+        let mut running = state.running.lock().unwrap();
+        if running.contains_key(&name) {
+            // Lost a race with another start; don't leak this process.
+            let _ = child.kill();
+            return Err(format!("'{name}' is already running"));
+        }
+        running.insert(
+            name,
+            RunningVm {
+                child,
+                vnc_display: ports.vnc_display,
+                websocket_port: ports.websocket_port,
+                qmp_port: ports.qmp_port,
+            },
+        );
+    }
     Ok(info)
 }
 
@@ -280,12 +333,80 @@ fn force_kill_vm(state: State<'_, AppState>, name: String) -> Result<(), String>
     }
 }
 
+/// Gracefully power down every running VM, wait for them to exit, then force
+/// kill any stragglers. Blocking — runs on a dedicated thread during app close.
+fn shutdown_all_blocking(app: &AppHandle) {
+    let state = app.state::<AppState>();
+
+    // Snapshot the QMP ports, then send the ACPI power button to each guest.
+    let ports: Vec<u16> = {
+        let running = state.running.lock().unwrap();
+        running.values().map(|rv| rv.qmp_port).collect()
+    };
+    for port in ports {
+        let _ = qmp::execute(port, "system_powerdown");
+    }
+
+    // Give guests up to ~20s to flush and power off cleanly.
+    for _ in 0..40 {
+        {
+            let mut running = state.running.lock().unwrap();
+            prune_dead(&mut running);
+            if running.is_empty() {
+                return;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+
+    // Anything still alive gets the plug pulled (the Job Object is the final
+    // backstop if we never even get here).
+    let mut running = state.running.lock().unwrap();
+    for rv in running.values_mut() {
+        let _ = rv.child.kill();
+    }
+    running.clear();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let state = AppState {
+        running: Mutex::new(HashMap::new()),
+        job: KillOnExitJob::new(),
+        shutting_down: AtomicBool::new(false),
+    };
+
     tauri::Builder::default()
-        .manage(AppState::default())
+        .manage(state)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            // When the user closes the window with VMs running, hold the close,
+            // shut the guests down cleanly on a background thread, then exit.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle().clone();
+                let state = app.state::<AppState>();
+
+                let any_running = {
+                    let mut running = state.running.lock().unwrap();
+                    prune_dead(&mut running);
+                    !running.is_empty()
+                };
+                if !any_running {
+                    return; // nothing to do; let it close
+                }
+                if state.shutting_down.swap(true, Ordering::SeqCst) {
+                    return; // shutdown already underway
+                }
+
+                api.prevent_close();
+                let app2 = app.clone();
+                std::thread::spawn(move || {
+                    shutdown_all_blocking(&app2);
+                    app2.exit(0);
+                });
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             detect_qemu,
             list_vms,
