@@ -9,6 +9,7 @@
 //!   * a QMP control socket for clean lifecycle management
 
 use crate::vm::VmConfig;
+use serde::Serialize;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::Command;
@@ -82,6 +83,17 @@ fn accelerator() -> &'static str {
     }
 }
 
+/// Whether the current accelerator supports live (running-VM) snapshots.
+///
+/// `savevm`/`loadvm` save and restore migratable vCPU + RAM state. KVM provides
+/// that; WHPX (Windows) and HVF (macOS) do not — QEMU rejects the save with
+/// "State blocked due to non-migratable CPUID/dirty-memory/XSAVE support". So on
+/// those platforms snapshots are only available while the VM is stopped
+/// (disk-only, via `qemu-img`).
+pub fn live_snapshots_supported() -> bool {
+    cfg!(target_os = "linux")
+}
+
 /// A CPU model that is safe for the chosen accelerator.
 ///
 /// `-cpu max`/`-cpu host` crash WHPX due to feature conflicts (APX vs MPX), so
@@ -107,6 +119,78 @@ pub fn create_disk(path: &str, size_gb: u32) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// A qcow2 internal snapshot, as reported by `qemu-img`.
+#[derive(Serialize, Clone, Debug)]
+pub struct Snapshot {
+    /// The snapshot tag (qcow2 calls this the snapshot "name").
+    pub tag: String,
+    /// Saved machine-state size in bytes. `0` means a disk-only snapshot
+    /// (taken while the VM was stopped); non-zero means RAM was captured too.
+    pub vm_state_size: u64,
+    /// Wall-clock time the snapshot was taken, as a Unix timestamp (seconds).
+    pub date_sec: i64,
+}
+
+/// Run `qemu-img` with the given args, returning an error with stderr on failure.
+fn run_img(args: &[&str]) -> Result<std::process::Output, String> {
+    let out = Command::new(img_binary())
+        .args(args)
+        .output()
+        .map_err(|e| format!("Could not run qemu-img: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "qemu-img {} failed: {}",
+            args.first().copied().unwrap_or(""),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(out)
+}
+
+/// List the internal snapshots stored in a qcow2 disk.
+///
+/// Reads `qemu-img info --output=json`, whose `snapshots` array is the source of
+/// truth regardless of whether the VM is running — so the same call serves both
+/// states without scraping QMP output.
+pub fn list_snapshots(disk_path: &str) -> Result<Vec<Snapshot>, String> {
+    let out = run_img(&["info", "--output=json", disk_path])?;
+    let info: serde_json::Value =
+        serde_json::from_slice(&out.stdout).map_err(|e| format!("parsing qemu-img info: {e}"))?;
+    let snaps = match info.get("snapshots").and_then(|s| s.as_array()) {
+        Some(arr) => arr,
+        None => return Ok(Vec::new()), // no snapshots key -> none taken yet
+    };
+    let list = snaps
+        .iter()
+        .map(|s| Snapshot {
+            tag: s
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            vm_state_size: s.get("vm-state-size").and_then(|v| v.as_u64()).unwrap_or(0),
+            date_sec: s.get("date-sec").and_then(|v| v.as_i64()).unwrap_or(0),
+        })
+        .collect();
+    Ok(list)
+}
+
+/// Create a disk-only snapshot (for a stopped VM). Unsafe to call while QEMU has
+/// the disk open — running VMs snapshot via QMP instead.
+pub fn snapshot_create_offline(disk_path: &str, tag: &str) -> Result<(), String> {
+    run_img(&["snapshot", "-c", tag, disk_path]).map(|_| ())
+}
+
+/// Apply (restore) a snapshot into a stopped VM's disk.
+pub fn snapshot_apply_offline(disk_path: &str, tag: &str) -> Result<(), String> {
+    run_img(&["snapshot", "-a", tag, disk_path]).map(|_| ())
+}
+
+/// Delete a snapshot from a stopped VM's disk.
+pub fn snapshot_delete_offline(disk_path: &str, tag: &str) -> Result<(), String> {
+    run_img(&["snapshot", "-d", tag, disk_path]).map(|_| ())
 }
 
 /// Ask the OS for a free TCP port by binding to port 0 and reading it back.

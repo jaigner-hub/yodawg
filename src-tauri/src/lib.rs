@@ -341,6 +341,106 @@ fn force_kill_vm(state: State<'_, AppState>, name: String) -> Result<(), String>
     }
 }
 
+/// Validate a snapshot tag. Tags flow into an HMP command line (`savevm <tag>`),
+/// so whitespace and shell-ish characters are rejected to keep them parseable.
+fn validate_tag(tag: &str) -> Result<(), String> {
+    if tag.is_empty() {
+        return Err("Snapshot name cannot be empty".into());
+    }
+    if tag.chars().any(|c| c.is_whitespace())
+        || tag.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\''])
+    {
+        return Err("Snapshot name contains invalid characters".into());
+    }
+    Ok(())
+}
+
+/// The QMP port for a VM if it is currently running, else `None`.
+fn qmp_port_if_running(state: &AppState, name: &str) -> Option<u16> {
+    let mut running = state.running.lock().unwrap();
+    prune_dead(&mut running);
+    running.get(name).map(|rv| rv.qmp_port)
+}
+
+/// Message shown when a live snapshot op is attempted on an accelerator that
+/// can't migrate VM state (WHPX/HVF).
+const LIVE_UNSUPPORTED: &str =
+    "Live snapshots aren't supported by this VM's accelerator (WHPX on Windows / \
+HVF on macOS). Shut the VM down first, then snapshot its disk.";
+
+/// Whether snapshots can be taken/restored while a VM is running on this host.
+#[tauri::command]
+fn live_snapshots_supported() -> bool {
+    qemu::live_snapshots_supported()
+}
+
+/// List the snapshots stored in a VM's disk. Works whether or not it's running.
+#[tauri::command]
+fn list_snapshots(app: AppHandle, name: String) -> Result<Vec<qemu::Snapshot>, String> {
+    let dir = app_data(&app)?;
+    let cfg = vm::load(&dir, &name)?;
+    qemu::list_snapshots(&cfg.disk_path)
+}
+
+/// Create a snapshot. A running VM is snapshotted live via QMP (`savevm`, which
+/// also saves RAM); a stopped VM is snapshotted on-disk via `qemu-img`.
+#[tauri::command]
+fn create_snapshot(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    tag: String,
+) -> Result<(), String> {
+    validate_tag(&tag)?;
+    match qmp_port_if_running(&state, &name) {
+        Some(_) if !qemu::live_snapshots_supported() => Err(LIVE_UNSUPPORTED.into()),
+        Some(port) => qmp::hmp(port, &format!("savevm {tag}")),
+        None => {
+            let dir = app_data(&app)?;
+            let cfg = vm::load(&dir, &name)?;
+            qemu::snapshot_create_offline(&cfg.disk_path, &tag)
+        }
+    }
+}
+
+/// Restore a snapshot, discarding the VM's current state. A running VM restores
+/// live via QMP (`loadvm`); a stopped VM restores on-disk via `qemu-img`.
+#[tauri::command]
+fn restore_snapshot(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    tag: String,
+) -> Result<(), String> {
+    match qmp_port_if_running(&state, &name) {
+        Some(_) if !qemu::live_snapshots_supported() => Err(LIVE_UNSUPPORTED.into()),
+        Some(port) => qmp::hmp(port, &format!("loadvm {tag}")),
+        None => {
+            let dir = app_data(&app)?;
+            let cfg = vm::load(&dir, &name)?;
+            qemu::snapshot_apply_offline(&cfg.disk_path, &tag)
+        }
+    }
+}
+
+/// Delete a snapshot. Routed to QMP (`delvm`) when running, `qemu-img` when not.
+#[tauri::command]
+fn delete_snapshot(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    tag: String,
+) -> Result<(), String> {
+    match qmp_port_if_running(&state, &name) {
+        Some(port) => qmp::hmp(port, &format!("delvm {tag}")),
+        None => {
+            let dir = app_data(&app)?;
+            let cfg = vm::load(&dir, &name)?;
+            qemu::snapshot_delete_offline(&cfg.disk_path, &tag)
+        }
+    }
+}
+
 /// Gracefully power down every running VM, wait for them to exit, then force
 /// kill any stragglers. Blocking — runs on a dedicated thread during app close.
 fn shutdown_all_blocking(app: &AppHandle) {
@@ -426,6 +526,11 @@ pub fn run() {
             running_info,
             stop_vm,
             force_kill_vm,
+            live_snapshots_supported,
+            list_snapshots,
+            create_snapshot,
+            restore_snapshot,
+            delete_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

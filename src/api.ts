@@ -23,6 +23,14 @@ export interface VmStatus {
   websocket_port?: number | null;
 }
 
+export interface Snapshot {
+  tag: string;
+  // Saved machine-state size in bytes; 0 = disk-only (taken while stopped).
+  vm_state_size: number;
+  // Unix timestamp (seconds) the snapshot was taken.
+  date_sec: number;
+}
+
 export interface RunningInfo {
   name: string;
   websocket_port: number;
@@ -78,6 +86,18 @@ export const api = {
   forceKillVm: (name: string) => invoke<void>("force_kill_vm", { name }),
   runningInfo: (name: string) =>
     invoke<RunningInfo | null>("running_info", { name }),
+
+  // Snapshots. Single-word args (name/tag) need no camelCase mapping.
+  liveSnapshotsSupported: () =>
+    invoke<boolean>("live_snapshots_supported"),
+  listSnapshots: (name: string) =>
+    invoke<Snapshot[]>("list_snapshots", { name }),
+  createSnapshot: (name: string, tag: string) =>
+    invoke<void>("create_snapshot", { name, tag }),
+  restoreSnapshot: (name: string, tag: string) =>
+    invoke<void>("restore_snapshot", { name, tag }),
+  deleteSnapshot: (name: string, tag: string) =>
+    invoke<void>("delete_snapshot", { name, tag }),
 
   // Native file picker for choosing an install ISO.
   pickIso: () =>

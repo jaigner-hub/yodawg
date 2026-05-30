@@ -3,6 +3,7 @@ import { api, VmStatus, RunningInfo } from "./api";
 import { VncViewer } from "./VncViewer";
 import { CreateVmDialog } from "./CreateVmDialog";
 import { EditVmDialog } from "./EditVmDialog";
+import { SnapshotsDialog } from "./SnapshotsDialog";
 import "./App.css";
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
   const [viewer, setViewer] = useState<RunningInfo | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showSnapshots, setShowSnapshots] = useState(false);
   const [qemu, setQemu] = useState<{ ok: boolean; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,6 +126,7 @@ export default function App() {
                     >
                       Force kill
                     </button>
+                    <button onClick={() => setShowSnapshots(true)}>Snapshots</button>
                   </>
                 ) : (
                   <>
@@ -131,6 +134,7 @@ export default function App() {
                       Start
                     </button>
                     <button onClick={() => setShowEdit(true)}>Edit</button>
+                    <button onClick={() => setShowSnapshots(true)}>Snapshots</button>
                     {current.iso_path && (
                       <button onClick={() => withErrors(() => api.detachIso(current.name))}>
                         Eject ISO
@@ -192,6 +196,10 @@ export default function App() {
             refresh();
           }}
         />
+      )}
+
+      {showSnapshots && current && (
+        <SnapshotsDialog vm={current} onClose={() => setShowSnapshots(false)} />
       )}
     </div>
   );

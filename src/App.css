@@ -362,3 +362,60 @@ button.danger:hover {
   gap: 10px;
   margin-top: 8px;
 }
+
+.snap-create {
+  display: flex;
+  gap: 8px;
+}
+.snap-create input {
+  flex: 1;
+}
+.snap-create button {
+  white-space: nowrap;
+}
+.snap-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.snap-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.snap-list li:last-child {
+  border-bottom: none;
+}
+.snap-list li.empty {
+  color: var(--muted);
+  justify-content: center;
+  font-size: 13px;
+}
+.snap-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.snap-tag {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.snap-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+.snap-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
