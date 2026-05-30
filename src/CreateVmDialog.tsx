@@ -1,0 +1,121 @@
+import { useState } from "react";
+import { api } from "./api";
+
+/** Modal form that collects the fields needed to create + boot a new VM. */
+export function CreateVmDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (name: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [memoryMb, setMemoryMb] = useState(4096);
+  const [cpus, setCpus] = useState(2);
+  const [diskGb, setDiskGb] = useState(20);
+  const [isoPath, setIsoPath] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function chooseIso() {
+    const picked = await api.pickIso();
+    if (picked) setIsoPath(picked);
+  }
+
+  async function submit() {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.createVm({
+        name: name.trim(),
+        memory_mb: memoryMb,
+        cpus,
+        disk_size_gb: diskGb,
+        iso_path: isoPath,
+      });
+      onCreated(name.trim());
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Create a VM</h2>
+
+        <label>
+          Name
+          <input
+            autoFocus
+            value={name}
+            placeholder="ubuntu-desktop"
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Install ISO
+          <div className="iso-row">
+            <input
+              readOnly
+              value={isoPath ?? ""}
+              placeholder="(optional — pick an .iso to boot from)"
+            />
+            <button type="button" onClick={chooseIso}>
+              Browse…
+            </button>
+          </div>
+        </label>
+
+        <div className="field-row">
+          <label>
+            Memory (MB)
+            <input
+              type="number"
+              min={256}
+              step={256}
+              value={memoryMb}
+              onChange={(e) => setMemoryMb(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            CPUs
+            <input
+              type="number"
+              min={1}
+              max={64}
+              value={cpus}
+              onChange={(e) => setCpus(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            Disk (GB)
+            <input
+              type="number"
+              min={1}
+              value={diskGb}
+              onChange={(e) => setDiskGb(Number(e.target.value))}
+            />
+          </label>
+        </div>
+
+        {error && <p className="error">{error}</p>}
+
+        <div className="modal-actions">
+          <button onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            className="primary"
+            onClick={submit}
+            disabled={busy || name.trim() === ""}
+          >
+            {busy ? "Creating…" : "Create VM"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
