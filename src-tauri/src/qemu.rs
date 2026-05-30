@@ -179,6 +179,31 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
     args.push("-device".into());
     args.push("usb-tablet".into());
 
+    // User-mode (NAT) networking with an e1000 NIC. Specifying a netdev/device
+    // suppresses QEMU's implicit default NIC. Any configured port forwards are
+    // appended as `hostfwd` rules (host:hostPort -> guest:guestPort).
+    let mut netdev = String::from("user,id=net0");
+    for pf in &cfg.port_forwards {
+        let proto = if pf.protocol == "udp" { "udp" } else { "tcp" };
+        netdev.push_str(&format!(
+            ",hostfwd={proto}::{}-:{}",
+            pf.host_port, pf.guest_port
+        ));
+    }
+    args.push("-netdev".into());
+    args.push(netdev);
+    args.push("-device".into());
+    args.push("e1000,netdev=net0".into());
+
+    // VGA model: "std" (broad compatibility) or "virtio" (faster for Linux).
+    let vga = if cfg.display_adapter == "virtio" {
+        "virtio"
+    } else {
+        "std"
+    };
+    args.push("-vga".into());
+    args.push(vga.into());
+
     // No native window; render over VNC with a websocket listener for noVNC.
     args.push("-display".into());
     args.push("none".into());

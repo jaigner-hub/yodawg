@@ -119,6 +119,8 @@ fn create_vm(
     cpus: u32,
     disk_size_gb: u32,
     iso_path: Option<String>,
+    display_adapter: String,
+    port_forwards: Vec<vm::PortForward>,
 ) -> Result<(), String> {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -144,6 +146,8 @@ fn create_vm(
         disk_path: disk_path.clone(),
         disk_size_gb,
         iso_path: iso_path.filter(|s| !s.is_empty()),
+        display_adapter,
+        port_forwards,
     };
 
     // Persist config first (creates the directory), then create the disk in it.
@@ -152,8 +156,8 @@ fn create_vm(
     Ok(())
 }
 
-/// Update an existing VM's editable settings (memory, CPUs, attached ISO).
-/// Changes take effect on the next start.
+/// Update an existing VM's editable settings (memory, CPUs, ISO, display
+/// adapter, port forwards). Changes take effect on the next start.
 #[tauri::command]
 fn update_vm(
     app: AppHandle,
@@ -161,6 +165,8 @@ fn update_vm(
     memory_mb: u32,
     cpus: u32,
     iso_path: Option<String>,
+    display_adapter: String,
+    port_forwards: Vec<vm::PortForward>,
 ) -> Result<(), String> {
     if memory_mb < 64 {
         return Err("Memory must be at least 64 MB".into());
@@ -173,6 +179,8 @@ fn update_vm(
     cfg.memory_mb = memory_mb;
     cfg.cpus = cpus;
     cfg.iso_path = iso_path.filter(|s| !s.is_empty());
+    cfg.display_adapter = display_adapter;
+    cfg.port_forwards = port_forwards;
     vm::save(&dir, &cfg)
 }
 

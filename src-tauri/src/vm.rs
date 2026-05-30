@@ -12,7 +12,27 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// A host→guest port forward over the user-mode NAT.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PortForward {
+    pub host_port: u16,
+    pub guest_port: u16,
+    #[serde(default = "default_protocol")]
+    pub protocol: String, // "tcp" | "udp"
+}
+
+fn default_protocol() -> String {
+    "tcp".into()
+}
+
+fn default_display_adapter() -> String {
+    "std".into()
+}
+
 /// Persistent configuration for a single virtual machine.
+///
+/// New fields use `#[serde(default ...)]` so older `vm.json` files (written
+/// before the field existed) still deserialize.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct VmConfig {
     pub name: String,
@@ -24,6 +44,12 @@ pub struct VmConfig {
     /// Absolute path to an install ISO, if one is attached.
     #[serde(default)]
     pub iso_path: Option<String>,
+    /// QEMU VGA model: "std" (compatible) or "virtio" (faster for Linux).
+    #[serde(default = "default_display_adapter")]
+    pub display_adapter: String,
+    /// Host→guest port forwards over user-mode NAT.
+    #[serde(default)]
+    pub port_forwards: Vec<PortForward>,
 }
 
 /// The directory holding all machine subdirectories.

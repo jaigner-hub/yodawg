@@ -280,6 +280,55 @@ button.danger:hover {
   border-radius: 7px;
   font-size: 14px;
 }
+.modal select {
+  width: 100%;
+  margin-top: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 14px;
+}
+.sub {
+  color: var(--off);
+  font-weight: 400;
+}
+
+/* Port-forward editor */
+.pf-list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pf-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pf-row input {
+  margin-top: 0;
+  width: 5.5em;
+  text-align: center;
+}
+.pf-row select {
+  margin-top: 0;
+  width: auto;
+}
+.pf-arrow {
+  color: var(--muted);
+}
+.pf-del {
+  padding: 6px 10px;
+  line-height: 1;
+}
+.pf-add {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
 .iso-row {
   display: flex;
   gap: 8px;
