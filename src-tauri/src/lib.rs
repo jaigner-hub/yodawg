@@ -278,10 +278,23 @@ fn start_vm(
         .map_err(|e| format!("creating {}: {e}", log_path.display()))?;
     let log_err = log.try_clone().map_err(|e| e.to_string())?;
 
-    let mut child = std::process::Command::new(qemu::system_binary())
-        .args(&args)
-        .stdout(log)
-        .stderr(log_err)
+    let mut cmd = std::process::Command::new(qemu::system_binary());
+    cmd.args(&args).stdout(log).stderr(log_err);
+    // Run QEMU from its install dir so it can find data files (e.g. the VNC
+    // keymap 'en-us'), which it looks up relative to the working directory.
+    if let Some(qdir) = qemu::install_dir() {
+        cmd.current_dir(qdir);
+    }
+    // Don't pop a console window for the console-mode qemu-system exe when
+    // launched from the GUI app (its output already goes to qemu.log).
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to launch QEMU: {e}"))?;
     let pid = child.id();

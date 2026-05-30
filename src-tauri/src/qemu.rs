@@ -53,6 +53,14 @@ pub fn system_binary() -> String {
     }
 }
 
+/// The QEMU install directory, if known. QEMU is launched with this as its
+/// working directory: it resolves some data files (notably the VNC keymap
+/// `en-us`) relative to the CWD, which otherwise fails in the installed GUI
+/// build (launched from a system dir) — see `lib.rs::start_vm`.
+pub fn install_dir() -> Option<PathBuf> {
+    qemu_dir()
+}
+
 /// Full path to `qemu-img`, or the bare name if no install dir is known.
 pub fn img_binary() -> String {
     match qemu_dir() {
