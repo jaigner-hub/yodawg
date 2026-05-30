@@ -24,8 +24,9 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
 - **Just works defaults** — acceleration and a safe CPU model are auto-selected
   per platform; absolute-pointer mouse (USB tablet) so the cursor tracks 1:1;
   disk-first boot order so installed systems boot themselves.
-- **Safe shutdown** — closing the window cleanly powers down running guests; VMs
-  can't be orphaned even if the app crashes.
+- **Pause on exit, resume on reopen** — closing the window suspends running
+  guests (they keep their state in the background); reopening yodawg reattaches
+  to them so you can pick up where you left off.
 
 ## Requirements
 
@@ -82,9 +83,10 @@ the NSIS hook in `src-tauri/installer/hooks.nsh`.
   processes, controls them over QMP, and persists VM configs.
   - `qemu.rs` — binary discovery, acceleration/CPU selection, QEMU argument
     building, disk creation, free-port allocation.
-  - `qmp.rs` — minimal QEMU Monitor Protocol client (shutdown, status).
+  - `qmp.rs` — minimal QEMU Monitor Protocol client (shutdown, pause, status).
   - `vm.rs` — VM config model and on-disk persistence.
-  - `proc_job.rs` — Windows Job Object so QEMU dies with the app.
+  - `session.rs` — records background VMs so a relaunch can reattach to them.
+  - `procutil.rs` — Windows PID liveness/terminate helpers for reattached VMs.
   - `lib.rs` — runtime state and the Tauri commands the frontend calls.
 
 The display uses **VNC** (QEMU's built-in VNC server with a websocket listener,
@@ -93,9 +95,12 @@ which noVNC connects to directly — no separate proxy). SPICE is a future optio
 ### Where VMs live
 
 ```
-%APPDATA%/com.yodawg.app/machines/<name>/
-├── vm.json        # VM config (RAM, CPU, disk path, ISO, ...)
-└── disk.qcow2     # virtual disk
+%APPDATA%/com.yodawg.app/
+├── running.json              # VMs left running/paused in the background
+└── machines/<name>/
+    ├── vm.json               # VM config (RAM, CPU, disk path, ISO, ...)
+    ├── disk.qcow2            # virtual disk
+    └── qemu.log             # QEMU stdout/stderr from the last launch
 ```
 
 ## Roadmap

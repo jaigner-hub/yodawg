@@ -65,6 +65,31 @@ pub fn execute_args(
     }
 }
 
+/// The guest name reported by QMP (`query-name`), set via QEMU's `-name`. Used
+/// to confirm a reattached process really is the VM we think it is, since a
+/// stale PID/port could otherwise belong to something else entirely.
+pub fn query_name(port: u16) -> Result<Option<String>, String> {
+    let resp = execute(port, "query-name")?;
+    Ok(resp
+        .get("return")
+        .and_then(|r| r.get("name"))
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_string()))
+}
+
+/// Whether the guest's vCPUs are currently paused (QMP `query-status`).
+///
+/// Unlike snapshots, pausing only halts vCPU execution, so this works on every
+/// accelerator. `status` is `"paused"` after a `stop`, `"running"` after `cont`.
+pub fn is_paused(port: u16) -> Result<bool, String> {
+    let resp = execute(port, "query-status")?;
+    Ok(resp
+        .get("return")
+        .and_then(|r| r.get("status"))
+        .and_then(|s| s.as_str())
+        == Some("paused"))
+}
+
 /// Run a Human Monitor (HMP) command over QMP via `human-monitor-command`.
 ///
 /// Used for snapshot operations (`savevm`/`loadvm`/`delvm`) which have no

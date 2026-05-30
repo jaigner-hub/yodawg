@@ -3,12 +3,12 @@
 //! Tauri backend: owns VM configs on disk, spawns/tracks `qemu-system-*`
 //! processes, and exposes lifecycle commands to the React frontend.
 
-mod proc_job;
+mod procutil;
 mod qemu;
 mod qmp;
+mod session;
 mod vm;
 
-use proc_job::KillOnExitJob;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -19,9 +19,12 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 use vm::VmConfig;
 
-/// A currently-running VM: its child process and the ports it was launched with.
+/// A currently-running VM and the ports it was launched with.
 struct RunningVm {
-    child: Child,
+    /// Owned handle when we launched it this session; `None` when reattached to
+    /// a VM a previous session left running (we then track it by `pid`).
+    child: Option<Child>,
+    pid: u32,
     vnc_display: u16,
     websocket_port: u16,
     qmp_port: u16,
@@ -30,10 +33,8 @@ struct RunningVm {
 /// App-wide runtime state: name -> running process.
 struct AppState {
     running: Mutex<HashMap<String, RunningVm>>,
-    /// Kills any assigned QEMU child if the app process dies (Windows).
-    job: Option<KillOnExitJob>,
-    /// Set once a graceful "shut everything down then exit" is in progress, so
-    /// the window-close handler doesn't kick it off twice.
+    /// Set once the "pause guests then exit" close sequence is underway, so the
+    /// window-close handler doesn't kick it off twice.
     shutting_down: AtomicBool,
 }
 
@@ -44,6 +45,8 @@ struct RunningInfo {
     websocket_port: u16,
     vnc_display: u16,
     qmp_port: u16,
+    /// Whether the guest's vCPUs are currently paused (QMP `stop`).
+    paused: bool,
 }
 
 /// A VM plus whether it is currently running — the unit the VM list renders.
@@ -69,13 +72,40 @@ fn app_data(app: &AppHandle) -> Result<PathBuf, String> {
 fn prune_dead(running: &mut HashMap<String, RunningVm>) {
     let dead: Vec<String> = running
         .iter_mut()
-        .filter_map(|(name, rv)| match rv.child.try_wait() {
-            Ok(Some(_)) => Some(name.clone()), // exited
-            _ => None,
+        .filter_map(|(name, rv)| {
+            let alive = match rv.child.as_mut() {
+                // We own it: try_wait reaps it and reports whether it exited.
+                Some(child) => !matches!(child.try_wait(), Ok(Some(_))),
+                // Reattached: no handle, so check the PID directly.
+                None => procutil::pid_alive(rv.pid),
+            };
+            if alive {
+                None
+            } else {
+                Some(name.clone())
+            }
         })
         .collect();
     for name in dead {
         running.remove(&name);
+    }
+}
+
+/// Record the currently-running VMs to disk so a relaunch can reattach to the
+/// QEMU processes (which now outlive the app). Best-effort.
+fn persist_running(app: &AppHandle, running: &HashMap<String, RunningVm>) {
+    if let Ok(dir) = app_data(app) {
+        let list: Vec<session::PersistedVm> = running
+            .iter()
+            .map(|(name, rv)| session::PersistedVm {
+                name: name.clone(),
+                pid: rv.pid,
+                vnc_display: rv.vnc_display,
+                websocket_port: rv.websocket_port,
+                qmp_port: rv.qmp_port,
+            })
+            .collect();
+        let _ = session::save(&dir, &list);
     }
 }
 
@@ -95,6 +125,9 @@ fn list_vms(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<VmStatus>,
     let dir = app_data(&app)?;
     let mut running = state.running.lock().unwrap();
     prune_dead(&mut running);
+    // Keep the on-disk record current as VMs come and go (also reaps any that
+    // exited between polls).
+    persist_running(&app, &running);
 
     let vms = vm::load_all(&dir)
         .into_iter()
@@ -126,8 +159,11 @@ fn create_vm(
     if name.is_empty() {
         return Err("VM name cannot be empty".into());
     }
-    if name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
-        return Err("VM name contains invalid characters".into());
+    // Reject path-unsafe characters (the name is also a directory name) and the
+    // comma, which would break QEMU's `-name` option parsing and our reattach
+    // identity check (qmp.rs::query_name).
+    if name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|', ',']) {
+        return Err("VM name can't contain any of  / \\ : * ? \" < > | ,".into());
     }
     let dir = app_data(&app)?;
     if vm::machine_dir(&dir, &name).exists() {
@@ -234,27 +270,28 @@ fn start_vm(
     };
     let args = qemu::build_args(&cfg, &ports);
 
+    // QEMU's output goes to a per-VM log file rather than a pipe we own, so the
+    // guest keeps running independently after yodawg exits (nothing it writes
+    // depends on a handle we hold). The log doubles as a launch-failure record.
+    let log_path = vm::machine_dir(&dir, &name).join("qemu.log");
+    let log = std::fs::File::create(&log_path)
+        .map_err(|e| format!("creating {}: {e}", log_path.display()))?;
+    let log_err = log.try_clone().map_err(|e| e.to_string())?;
+
     let mut child = std::process::Command::new(qemu::system_binary())
         .args(&args)
-        .stderr(std::process::Stdio::piped())
+        .stdout(log)
+        .stderr(log_err)
         .spawn()
         .map_err(|e| format!("Failed to launch QEMU: {e}"))?;
-
-    // Tie the child to our lifetime so it can never be orphaned.
-    if let Some(job) = &state.job {
-        job.assign(&child);
-    }
+    let pid = child.id();
 
     // Bad args / missing acceleration usually make QEMU exit within a moment.
-    // Give it a beat, and if it died, surface its stderr instead of silently
+    // Give it a beat, and if it died, surface the log instead of silently
     // flipping the VM back to "stopped".
     std::thread::sleep(Duration::from_millis(600));
     if let Ok(Some(status)) = child.try_wait() {
-        let mut msg = String::new();
-        if let Some(mut err) = child.stderr.take() {
-            use std::io::Read;
-            let _ = err.read_to_string(&mut msg);
-        }
+        let msg = std::fs::read_to_string(&log_path).unwrap_or_default();
         let msg = msg.trim();
         return Err(if msg.is_empty() {
             format!("QEMU exited immediately ({status}).")
@@ -263,21 +300,12 @@ fn start_vm(
         });
     }
 
-    // Still running: drain stderr in the background so the pipe can't fill and
-    // block QEMU.
-    if let Some(mut err) = child.stderr.take() {
-        std::thread::spawn(move || {
-            use std::io::Read;
-            let mut sink = String::new();
-            let _ = err.read_to_string(&mut sink);
-        });
-    }
-
     let info = RunningInfo {
         name: name.clone(),
         websocket_port: ports.websocket_port,
         vnc_display: ports.vnc_display,
         qmp_port: ports.qmp_port,
+        paused: false, // freshly launched -> running
     };
     {
         let mut running = state.running.lock().unwrap();
@@ -289,12 +317,14 @@ fn start_vm(
         running.insert(
             name,
             RunningVm {
-                child,
+                child: Some(child),
+                pid,
                 vnc_display: ports.vnc_display,
                 websocket_port: ports.websocket_port,
                 qmp_port: ports.qmp_port,
             },
         );
+        persist_running(&app, &running);
     }
     Ok(info)
 }
@@ -309,6 +339,8 @@ fn running_info(state: State<'_, AppState>, name: String) -> Option<RunningInfo>
         websocket_port: rv.websocket_port,
         vnc_display: rv.vnc_display,
         qmp_port: rv.qmp_port,
+        // QMP may not be ready yet during early boot; treat errors as "running".
+        paused: qmp::is_paused(rv.qmp_port).unwrap_or(false),
     })
 }
 
@@ -317,28 +349,51 @@ fn running_info(state: State<'_, AppState>, name: String) -> Option<RunningInfo>
 /// reaps it.
 #[tauri::command]
 fn stop_vm(state: State<'_, AppState>, name: String) -> Result<(), String> {
-    let qmp_port = {
-        let running = state.running.lock().unwrap();
-        running
-            .get(&name)
-            .map(|rv| rv.qmp_port)
-            .ok_or_else(|| format!("'{name}' is not running"))?
-    };
+    let qmp_port = running_qmp_port(&state, &name)?;
+    // A paused guest has halted vCPUs and can't act on the ACPI power button
+    // until it's running again, so resume first (`cont` is a no-op if it's
+    // already running), then request the powerdown.
+    let _ = qmp::execute(qmp_port, "cont");
     qmp::execute(qmp_port, "system_powerdown")?;
+    Ok(())
+}
+
+/// Pause a running VM (QMP `stop` — halts vCPUs). Works on any accelerator.
+#[tauri::command]
+fn pause_vm(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let qmp_port = running_qmp_port(&state, &name)?;
+    qmp::execute(qmp_port, "stop")?;
+    Ok(())
+}
+
+/// Resume a paused VM (QMP `cont`).
+#[tauri::command]
+fn resume_vm(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let qmp_port = running_qmp_port(&state, &name)?;
+    qmp::execute(qmp_port, "cont")?;
     Ok(())
 }
 
 /// Forcibly terminate a VM's process (the "pull the plug" option).
 #[tauri::command]
-fn force_kill_vm(state: State<'_, AppState>, name: String) -> Result<(), String> {
+fn force_kill_vm(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<(), String> {
     let mut running = state.running.lock().unwrap();
-    if let Some(mut rv) = running.remove(&name) {
-        rv.child.kill().map_err(|e| e.to_string())?;
-        let _ = rv.child.wait();
-        Ok(())
-    } else {
-        Err(format!("'{name}' is not running"))
+    let mut rv = running
+        .remove(&name)
+        .ok_or_else(|| format!("'{name}' is not running"))?;
+    match rv.child.as_mut() {
+        Some(child) => {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        None => procutil::kill_pid(rv.pid), // reattached: terminate by PID
     }
+    persist_running(&app, &running);
+    Ok(())
 }
 
 /// Validate a snapshot tag. Tags flow into an HMP command line (`savevm <tag>`),
@@ -360,6 +415,12 @@ fn qmp_port_if_running(state: &AppState, name: &str) -> Option<u16> {
     let mut running = state.running.lock().unwrap();
     prune_dead(&mut running);
     running.get(name).map(|rv| rv.qmp_port)
+}
+
+/// The QMP port for a running VM, or an error if it isn't running. (The lock is
+/// released before the caller talks to QMP.)
+fn running_qmp_port(state: &AppState, name: &str) -> Result<u16, String> {
+    qmp_port_if_running(state, name).ok_or_else(|| format!("'{name}' is not running"))
 }
 
 /// Message shown when a live snapshot op is attempted on an accelerator that
@@ -441,46 +502,56 @@ fn delete_snapshot(
     }
 }
 
-/// Gracefully power down every running VM, wait for them to exit, then force
-/// kill any stragglers. Blocking — runs on a dedicated thread during app close.
-fn shutdown_all_blocking(app: &AppHandle) {
+/// Pause every running guest (QMP `stop`) on app close and record them, so the
+/// VMs stay suspended in the background — consuming no CPU — for a later
+/// relaunch to reattach and resume, rather than being powered off or killed.
+fn pause_all_on_exit(app: &AppHandle) {
     let state = app.state::<AppState>();
+    let running = state.running.lock().unwrap();
+    for rv in running.values() {
+        let _ = qmp::execute(rv.qmp_port, "stop");
+    }
+    persist_running(app, &running);
+}
 
-    // Snapshot the QMP ports, then send the ACPI power button to each guest.
-    let ports: Vec<u16> = {
-        let running = state.running.lock().unwrap();
-        running.values().map(|rv| rv.qmp_port).collect()
+/// On launch, reattach to any VMs a previous session left running/paused. A
+/// persisted entry is trusted only if its PID is alive *and* QMP reports the
+/// matching guest name (set via `-name`), so a reused PID or port can't be
+/// mistaken for one of our VMs. Survivors are repopulated; the rest are dropped.
+fn reconcile_running(app: &AppHandle) {
+    let dir = match app_data(app) {
+        Ok(d) => d,
+        Err(_) => return,
     };
-    for port in ports {
-        let _ = qmp::execute(port, "system_powerdown");
-    }
-
-    // Give guests up to ~20s to flush and power off cleanly.
-    for _ in 0..40 {
-        {
-            let mut running = state.running.lock().unwrap();
-            prune_dead(&mut running);
-            if running.is_empty() {
-                return;
-            }
-        }
-        std::thread::sleep(Duration::from_millis(500));
-    }
-
-    // Anything still alive gets the plug pulled (the Job Object is the final
-    // backstop if we never even get here).
+    let state = app.state::<AppState>();
     let mut running = state.running.lock().unwrap();
-    for rv in running.values_mut() {
-        let _ = rv.child.kill();
+    let mut survivors: Vec<session::PersistedVm> = Vec::new();
+    for p in session::load(&dir) {
+        if !procutil::pid_alive(p.pid) {
+            continue;
+        }
+        if qmp::query_name(p.qmp_port).ok().flatten().as_deref() != Some(p.name.as_str()) {
+            continue; // not our VM (gone, or the port belongs to something else)
+        }
+        running.insert(
+            p.name.clone(),
+            RunningVm {
+                child: None,
+                pid: p.pid,
+                vnc_display: p.vnc_display,
+                websocket_port: p.websocket_port,
+                qmp_port: p.qmp_port,
+            },
+        );
+        survivors.push(p);
     }
-    running.clear();
+    let _ = session::save(&dir, &survivors);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let state = AppState {
         running: Mutex::new(HashMap::new()),
-        job: KillOnExitJob::new(),
         shutting_down: AtomicBool::new(false),
     };
 
@@ -488,9 +559,16 @@ pub fn run() {
         .manage(state)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // Reattach to any VMs a previous session left paused in the
+            // background, so they show up running and can be resumed.
+            reconcile_running(app.handle());
+            Ok(())
+        })
         .on_window_event(|window, event| {
             // When the user closes the window with VMs running, hold the close,
-            // shut the guests down cleanly on a background thread, then exit.
+            // pause the guests on a background thread (leaving them alive for a
+            // later relaunch to reattach), then exit.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let app = window.app_handle().clone();
                 let state = app.state::<AppState>();
@@ -501,16 +579,16 @@ pub fn run() {
                     !running.is_empty()
                 };
                 if !any_running {
-                    return; // nothing to do; let it close
+                    return; // nothing to pause; let it close
                 }
                 if state.shutting_down.swap(true, Ordering::SeqCst) {
-                    return; // shutdown already underway
+                    return; // close sequence already underway
                 }
 
                 api.prevent_close();
                 let app2 = app.clone();
                 std::thread::spawn(move || {
-                    shutdown_all_blocking(&app2);
+                    pause_all_on_exit(&app2);
                     app2.exit(0);
                 });
             }
@@ -525,6 +603,8 @@ pub fn run() {
             start_vm,
             running_info,
             stop_vm,
+            pause_vm,
+            resume_vm,
             force_kill_vm,
             live_snapshots_supported,
             list_snapshots,

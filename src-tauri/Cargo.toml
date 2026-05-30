@@ -24,13 +24,11 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# Windows-only: Job Objects, used to guarantee spawned QEMU processes die with
-# the app (no orphaned VMs on crash or forced close).
+# Windows-only: process APIs to check liveness of and terminate QEMU VMs that
+# outlive the app, so a relaunch can reattach to them (see procutil.rs).
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
-    "Win32_Security",
-    "Win32_System_JobObjects",
     "Win32_System_Threading",
 ] }
 

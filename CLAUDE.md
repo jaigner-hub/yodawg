@@ -52,17 +52,32 @@ Frontend (`src/`):
 - `api.ts` — typed wrappers over `invoke(...)` and the dialog plugin.
 
 Backend (`src-tauri/src/`):
-- `lib.rs` — `AppState` (running-process map, Job Object, shutdown flag), all
-  `#[tauri::command]`s, and the window-close graceful-shutdown handler.
+- `lib.rs` — `AppState` (running-VM map, close flag), all `#[tauri::command]`s,
+  the window-close **pause-and-exit** handler, and `reconcile_running` (reattach
+  on launch).
 - `qemu.rs` — binary discovery, accel/CPU selection, **argument building**,
   disk creation, free-port allocation. **All QEMU flag knowledge lives here.**
 - `qmp.rs` — minimal synchronous QMP (QEMU Monitor Protocol) client over TCP.
 - `vm.rs` — `VmConfig` model + persistence under `app_data/machines/<name>/`.
-- `proc_job.rs` — Windows Job Object (`KILL_ON_JOB_CLOSE`); no-op elsewhere.
+- `session.rs` — persists the set of background VMs (`app_data/running.json`)
+  so a relaunch can reattach.
+- `procutil.rs` — Windows PID liveness/terminate helpers (for reattached VMs we
+  don't hold a `Child` for); shells out to `kill` elsewhere.
 
 Commands exposed to the frontend: `detect_qemu`, `list_vms`, `create_vm`,
 `update_vm`, `detach_iso`, `delete_vm`, `start_vm`, `running_info`, `stop_vm`,
-`force_kill_vm`.
+`pause_vm`, `resume_vm`, `force_kill_vm`, `live_snapshots_supported`,
+`list_snapshots`, `create_snapshot`, `restore_snapshot`, `delete_snapshot`.
+
+**VM lifecycle across app restarts:** spawned QEMU processes deliberately
+**outlive the app** — they are *not* tied to a kill-on-close Job Object, and
+their stdio goes to a per-VM `qemu.log` (not a pipe yodawg owns). Closing the
+window **pauses** running guests (QMP `stop`) and records them to
+`running.json`; on the next launch `reconcile_running` probes each (PID alive +
+QMP `query-name` matches the `-name` we set) and reattaches the survivors,
+which show as running/paused and can be resumed. The old "no orphans / die with
+the app" guarantee is intentionally gone; cleanup happens via reconcile on the
+next launch instead.
 
 ## Conventions & key facts
 
@@ -78,9 +93,11 @@ Commands exposed to the frontend: `detect_qemu`, `list_vms`, `create_vm`,
   (`-cpu max`/`host` crash WHPX); `-drive file=...,format=qcow2` (the `file=`
   prefix is mandatory); `-usb -device usb-tablet` (absolute pointer, else the
   cursor drifts over VNC); `-boot order=cd` (disk-first, CD fallback).
-- **No orphans:** every spawned QEMU child is assigned to the Job Object so it
-  dies with the app even on a crash; normal window-close powers guests down
-  gracefully via QMP first.
+- **VMs outlive the app:** spawned QEMU is *not* killed on close. Window-close
+  **pauses** running guests (QMP `stop`) and records them to `running.json`; the
+  next launch reattaches them (see the lifecycle note under Architecture). The
+  cost is that a VM can keep running if yodawg is never reopened — reconcile on
+  launch is the cleanup, not a kill-on-close Job Object.
 - **Adding a command:** write the `#[tauri::command]` in `lib.rs`, add it to the
   `generate_handler![...]` list, then add a wrapper in `src/api.ts`. New plugin
   permissions go in `src-tauri/capabilities/default.json`.

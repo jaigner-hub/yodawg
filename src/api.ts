@@ -36,6 +36,7 @@ export interface RunningInfo {
   websocket_port: number;
   vnc_display: number;
   qmp_port: number;
+  paused: boolean;
 }
 
 export interface CreateVmParams {
@@ -83,6 +84,8 @@ export const api = {
   deleteVm: (name: string) => invoke<void>("delete_vm", { name }),
   startVm: (name: string) => invoke<RunningInfo>("start_vm", { name }),
   stopVm: (name: string) => invoke<void>("stop_vm", { name }),
+  pauseVm: (name: string) => invoke<void>("pause_vm", { name }),
+  resumeVm: (name: string) => invoke<void>("resume_vm", { name }),
   forceKillVm: (name: string) => invoke<void>("force_kill_vm", { name }),
   runningInfo: (name: string) =>
     invoke<RunningInfo | null>("running_info", { name }),

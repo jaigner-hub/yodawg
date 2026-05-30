@@ -240,6 +240,11 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
         // cryptic errors.
         "-drive".into(),
         format!("file={},format=qcow2", cfg.disk_path),
+        // Tag the guest with its name so we can identify it over QMP
+        // (`query-name`) when reattaching to a VM left running across an app
+        // restart — see lib.rs::reconcile_running.
+        "-name".into(),
+        cfg.name.clone(),
     ];
 
     // Attach the install ISO when present. Boot order is hard-disk-first with

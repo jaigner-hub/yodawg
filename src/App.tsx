@@ -111,12 +111,25 @@ export default function App() {
                 <h1>{current.name}</h1>
                 <span className="specs">
                   {current.cpus} vCPU · {current.memory_mb} MB · {current.disk_size_gb} GB
-                  {current.running ? " · running" : " · stopped"}
+                  {current.running
+                    ? viewer?.paused
+                      ? " · paused"
+                      : " · running"
+                    : " · stopped"}
                 </span>
               </div>
               <div className="actions">
                 {current.running ? (
                   <>
+                    {viewer?.paused ? (
+                      <button onClick={() => withErrors(() => api.resumeVm(current.name))}>
+                        Resume
+                      </button>
+                    ) : (
+                      <button onClick={() => withErrors(() => api.pauseVm(current.name))}>
+                        Pause
+                      </button>
+                    )}
                     <button onClick={() => withErrors(() => api.stopVm(current.name))}>
                       Shut down
                     </button>
