@@ -61,6 +61,19 @@ cargo check --manifest-path src-tauri/Cargo.toml   # check the Rust backend
 > and Windows binaries. See [CLAUDE.md](./CLAUDE.md) for the interop workflow and
 > gotchas.
 
+### Installer (Windows, bundles QEMU)
+
+`npm run tauri build` produces an NSIS installer at
+`src-tauri/target/release/bundle/nsis/yodawg_<version>_x64-setup.exe`. It
+bundles the QEMU setup and, during install, checks for QEMU at
+`C:\Program Files\qemu` — running the bundled setup silently only if it's
+missing. Because the bundled QEMU installs into Program Files, the installer is
+**per-machine** (requires admin / one UAC prompt).
+
+Drop the QEMU Windows setup at `src-tauri/installer/qemu-w64-setup.exe` before
+building — it's gitignored (large, ~200 MB) and embedded into the installer by
+the NSIS hook in `src-tauri/installer/hooks.nsh`.
+
 ## How it works
 
 - **Frontend** (`src/`) — React + TypeScript in a Tauri webview. Renders the VM
