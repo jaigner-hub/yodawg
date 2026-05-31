@@ -18,6 +18,7 @@ export interface VmStatus {
   disk_size_gb: number;
   iso_path?: string | null;
   display_adapter: string;
+  nic_model: string;
   port_forwards: PortForward[];
   running: boolean;
   websocket_port?: number | null;
@@ -46,6 +47,7 @@ export interface CreateVmParams {
   disk_size_gb: number;
   iso_path?: string | null;
   display_adapter: string;
+  nic_model: string;
   port_forwards: PortForward[];
 }
 
@@ -62,6 +64,7 @@ export const api = {
       diskSizeGb: p.disk_size_gb,
       isoPath: p.iso_path ?? null,
       displayAdapter: p.display_adapter,
+      nicModel: p.nic_model,
       portForwards: p.port_forwards,
     }),
   updateVm: (p: {
@@ -70,6 +73,7 @@ export const api = {
     cpus: number;
     iso_path?: string | null;
     display_adapter: string;
+    nic_model: string;
     port_forwards: PortForward[];
   }) =>
     invoke<void>("update_vm", {
@@ -78,6 +82,7 @@ export const api = {
       cpus: p.cpus,
       isoPath: p.iso_path ?? null,
       displayAdapter: p.display_adapter,
+      nicModel: p.nic_model,
       portForwards: p.port_forwards,
     }),
   detachIso: (name: string) => invoke<void>("detach_iso", { name }),

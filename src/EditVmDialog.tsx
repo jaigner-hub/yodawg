@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, VmStatus, PortForward } from "./api";
-import { DisplaySelect, PortForwardsEditor } from "./SettingsFields";
+import { DisplaySelect, NicSelect, PortForwardsEditor } from "./SettingsFields";
 
 /** Modal form for editing a stopped VM's settings (memory, CPUs, ISO). */
 export function EditVmDialog({
@@ -16,6 +16,7 @@ export function EditVmDialog({
   const [cpus, setCpus] = useState(vm.cpus);
   const [isoPath, setIsoPath] = useState<string | null>(vm.iso_path ?? null);
   const [displayAdapter, setDisplayAdapter] = useState(vm.display_adapter ?? "std");
+  const [nicModel, setNicModel] = useState(vm.nic_model ?? "e1000");
   const [portForwards, setPortForwards] = useState<PortForward[]>(
     vm.port_forwards ?? []
   );
@@ -37,6 +38,7 @@ export function EditVmDialog({
         cpus,
         iso_path: isoPath,
         display_adapter: displayAdapter,
+        nic_model: nicModel,
         port_forwards: portForwards,
       });
       onSaved();
@@ -102,6 +104,7 @@ export function EditVmDialog({
         </div>
 
         <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
+        <NicSelect value={nicModel} onChange={setNicModel} />
         <PortForwardsEditor value={portForwards} onChange={setPortForwards} />
 
         <p className="hint">Changes take effect the next time the VM starts.</p>

@@ -153,6 +153,7 @@ fn create_vm(
     disk_size_gb: u32,
     iso_path: Option<String>,
     display_adapter: String,
+    nic_model: String,
     port_forwards: Vec<vm::PortForward>,
 ) -> Result<(), String> {
     let name = name.trim().to_string();
@@ -183,6 +184,7 @@ fn create_vm(
         disk_size_gb,
         iso_path: iso_path.filter(|s| !s.is_empty()),
         display_adapter,
+        nic_model,
         port_forwards,
     };
 
@@ -202,6 +204,7 @@ fn update_vm(
     cpus: u32,
     iso_path: Option<String>,
     display_adapter: String,
+    nic_model: String,
     port_forwards: Vec<vm::PortForward>,
 ) -> Result<(), String> {
     if memory_mb < 64 {
@@ -216,6 +219,7 @@ fn update_vm(
     cfg.cpus = cpus;
     cfg.iso_path = iso_path.filter(|s| !s.is_empty());
     cfg.display_adapter = display_adapter;
+    cfg.nic_model = nic_model;
     cfg.port_forwards = port_forwards;
     vm::save(&dir, &cfg)
 }

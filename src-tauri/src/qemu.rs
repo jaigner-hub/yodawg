@@ -285,9 +285,9 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
     args.push("-device".into());
     args.push("usb-tablet".into());
 
-    // User-mode (NAT) networking with an e1000 NIC. Specifying a netdev/device
-    // suppresses QEMU's implicit default NIC. Any configured port forwards are
-    // appended as `hostfwd` rules (host:hostPort -> guest:guestPort).
+    // User-mode (NAT) networking. Specifying a netdev/device suppresses QEMU's
+    // implicit default NIC. Any configured port forwards are appended as
+    // `hostfwd` rules (host:hostPort -> guest:guestPort).
     let mut netdev = String::from("user,id=net0");
     for pf in &cfg.port_forwards {
         let proto = if pf.protocol == "udp" { "udp" } else { "tcp" };
@@ -298,8 +298,19 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
     }
     args.push("-netdev".into());
     args.push(netdev);
+    // NIC model. e1000 suits modern guests (Linux/Windows have drivers), but
+    // DOS-era guests only ship NE2000 packet drivers — those probe an ISA card
+    // at I/O 0x300 / IRQ 9, which `ne2k_isa` provides by default, so the driver
+    // finds it without reconfiguration. Wrong model => the guest's driver finds
+    // no card and reports an all-FF MAC with no DHCP lease.
+    let nic_device = match cfg.nic_model.as_str() {
+        "ne2k" => "ne2k_isa,netdev=net0",
+        "rtl8139" => "rtl8139,netdev=net0",
+        "virtio" => "virtio-net-pci,netdev=net0",
+        _ => "e1000,netdev=net0", // default / "e1000"
+    };
     args.push("-device".into());
-    args.push("e1000,netdev=net0".into());
+    args.push(nic_device.into());
 
     // VGA model: "std" (broad compatibility) or "virtio" (faster for Linux).
     let vga = if cfg.display_adapter == "virtio" {

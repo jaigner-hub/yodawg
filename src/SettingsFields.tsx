@@ -19,6 +19,27 @@ export function DisplaySelect({
   );
 }
 
+/** Network-card (NIC model) picker, shared by the create/edit dialogs. */
+export function NicSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label>
+      Network adapter
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="e1000">Intel e1000 — most compatible</option>
+        <option value="virtio">VirtIO — faster (Linux guests)</option>
+        <option value="rtl8139">Realtek RTL8139 — older OSes</option>
+        <option value="ne2k">NE2000 — DOS guests</option>
+      </select>
+    </label>
+  );
+}
+
 /** Editor for host→guest port forwards over the user-mode NAT. */
 export function PortForwardsEditor({
   value,

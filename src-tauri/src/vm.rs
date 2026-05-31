@@ -29,6 +29,10 @@ fn default_display_adapter() -> String {
     "std".into()
 }
 
+fn default_nic_model() -> String {
+    "e1000".into()
+}
+
 /// Persistent configuration for a single virtual machine.
 ///
 /// New fields use `#[serde(default ...)]` so older `vm.json` files (written
@@ -47,6 +51,11 @@ pub struct VmConfig {
     /// QEMU VGA model: "std" (compatible) or "virtio" (faster for Linux).
     #[serde(default = "default_display_adapter")]
     pub display_adapter: String,
+    /// QEMU NIC model: "e1000" (default), "virtio" (fast, Linux), "rtl8139"
+    /// (broad legacy support), or "ne2k" (NE2000 ISA — for DOS guests whose
+    /// bundled packet driver only speaks NE2000). See `qemu.rs::build_args`.
+    #[serde(default = "default_nic_model")]
+    pub nic_model: String,
     /// Host→guest port forwards over user-mode NAT.
     #[serde(default)]
     pub port_forwards: Vec<PortForward>,

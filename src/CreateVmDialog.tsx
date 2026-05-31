@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, PortForward } from "./api";
-import { DisplaySelect, PortForwardsEditor } from "./SettingsFields";
+import { DisplaySelect, NicSelect, PortForwardsEditor } from "./SettingsFields";
 
 /** Modal form that collects the fields needed to create + boot a new VM. */
 export function CreateVmDialog({
@@ -16,6 +16,7 @@ export function CreateVmDialog({
   const [diskGb, setDiskGb] = useState(20);
   const [isoPath, setIsoPath] = useState<string | null>(null);
   const [displayAdapter, setDisplayAdapter] = useState("std");
+  const [nicModel, setNicModel] = useState("e1000");
   const [portForwards, setPortForwards] = useState<PortForward[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +37,7 @@ export function CreateVmDialog({
         disk_size_gb: diskGb,
         iso_path: isoPath,
         display_adapter: displayAdapter,
+        nic_model: nicModel,
         port_forwards: portForwards,
       });
       onCreated(name.trim());
@@ -107,6 +109,7 @@ export function CreateVmDialog({
         </div>
 
         <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
+        <NicSelect value={nicModel} onChange={setNicModel} />
         <PortForwardsEditor value={portForwards} onChange={setPortForwards} />
 
         {error && <p className="error">{error}</p>}
