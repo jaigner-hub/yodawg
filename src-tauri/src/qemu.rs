@@ -270,8 +270,17 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
         cfg.cpus.to_string(),
         // Primary disk. The `file=` prefix is mandatory — omitting it yields
         // cryptic errors.
+        //
+        // `cache=writethrough`: commit every guest write to the qcow2 file
+        // immediately instead of QEMU's default `writeback` (which buffers
+        // writes in QEMU's own memory until a guest flush). Non-ACPI guests
+        // (DOS) ignore our `system_powerdown` "Shut down", so the only way to
+        // stop them is Force kill — a hard process terminate. Under writeback
+        // that drops unflushed writes and corrupts qcow2 metadata, so a freshly
+        // partitioned/formatted disk comes back blank on the next boot.
+        // Writethrough makes a hard kill safe at the cost of some write speed.
         "-drive".into(),
-        format!("file={},format=qcow2", cfg.disk_path),
+        format!("file={},format=qcow2,cache=writethrough", cfg.disk_path),
         // Tag the guest with its name so we can identify it over QMP
         // (`query-name`) when reattaching to a VM left running across an app
         // restart — see lib.rs::reconcile_running.
