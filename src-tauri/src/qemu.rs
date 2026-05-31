@@ -14,6 +14,24 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::Command;
 
+/// Suppress the console window when spawning a console-mode QEMU exe.
+///
+/// The installed app is a GUI-subsystem process with no inherited console, so
+/// each `qemu`/`qemu-img` spawn would otherwise pop a brief command-prompt
+/// window — and the console alloc/teardown also stalls startup when `detect()`
+/// runs the `--version` check. (`tauri dev` is console-subsystem, so the child
+/// inherits its console and this is a no-op there.)
+fn no_window(cmd: &mut Command) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = cmd;
+}
+
 /// Resolve the directory containing the QEMU binaries.
 ///
 /// Order: `YODAWG_QEMU_DIR` env override, then the default install location,
@@ -72,8 +90,10 @@ pub fn img_binary() -> String {
 /// Report whether QEMU was found, and its version string. Used for a startup
 /// health check surfaced in the UI.
 pub fn detect() -> Result<String, String> {
-    let out = Command::new(system_binary())
-        .arg("--version")
+    let mut cmd = Command::new(system_binary());
+    cmd.arg("--version");
+    no_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("Could not run QEMU ({}): {e}", system_binary()))?;
     let text = String::from_utf8_lossy(&out.stdout);
@@ -116,8 +136,10 @@ fn cpu_model() -> &'static str {
 
 /// Create a qcow2 disk image of the given size (in GiB).
 pub fn create_disk(path: &str, size_gb: u32) -> Result<(), String> {
-    let out = Command::new(img_binary())
-        .args(["create", "-f", "qcow2", path, &format!("{size_gb}G")])
+    let mut cmd = Command::new(img_binary());
+    cmd.args(["create", "-f", "qcow2", path, &format!("{size_gb}G")]);
+    no_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("Could not run qemu-img: {e}"))?;
     if !out.status.success() {
@@ -143,8 +165,10 @@ pub struct Snapshot {
 
 /// Run `qemu-img` with the given args, returning an error with stderr on failure.
 fn run_img(args: &[&str]) -> Result<std::process::Output, String> {
-    let out = Command::new(img_binary())
-        .args(args)
+    let mut cmd = Command::new(img_binary());
+    cmd.args(args);
+    no_window(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("Could not run qemu-img: {e}"))?;
     if !out.status.success() {
