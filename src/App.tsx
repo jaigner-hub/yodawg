@@ -149,7 +149,10 @@ export default function App() {
                     <button onClick={() => setShowEdit(true)}>Edit</button>
                     <button onClick={() => setShowSnapshots(true)}>Snapshots</button>
                     {current.iso_path && (
-                      <button onClick={() => withErrors(() => api.detachIso(current.name))}>
+                      <button
+                        title="Boots from the disk only. DOS guests (e.g. FreeDOS) may not boot afterward if the installer didn't write the MBR — boot once with the ISO attached and run FDISK /MBR then SYS C: first."
+                        onClick={() => withErrors(() => api.detachIso(current.name))}
+                      >
                         Eject ISO
                       </button>
                     )}

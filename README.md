@@ -103,6 +103,27 @@ which noVNC connects to directly — no separate proxy). SPICE is a future optio
     └── qemu.log             # QEMU stdout/stderr from the last launch
 ```
 
+## Troubleshooting
+
+### FreeDOS (or other DOS) won't boot after removing the install CD
+
+The VM boots disk-first with CD-ROM fallback. If a DOS guest only boots while
+the install ISO is attached and fails ("no bootable device" / "Invalid partition
+table") once you detach it, the installer never wrote boot code to the disk's
+**master boot record** — so the BIOS skips the disk and was really booting from
+the CD all along, which then chained into the disk.
+
+Fix it from inside the guest, one time:
+
+1. Boot **with the ISO still attached** to reach a DOS prompt.
+2. Run:
+   ```
+   FDISK /MBR     REM write standard MBR boot code to the first hard disk
+   SYS C:         REM (re)install the boot sector + kernel on C:
+   ```
+   In `FDISK`, also confirm partition 1 is set **Active** (option 2).
+3. Shut down, **Detach ISO**, and boot — it should now boot standalone to `C:`.
+
 ## Roadmap
 
 - Snapshots (save/restore VM state)
