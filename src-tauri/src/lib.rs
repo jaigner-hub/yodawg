@@ -575,7 +575,18 @@ pub fn run() {
         .setup(|app| {
             // Reattach to any VMs a previous session left paused in the
             // background, so they show up running and can be resumed.
-            reconcile_running(app.handle());
+            //
+            // Done on a background thread so it never blocks the event loop:
+            // reconcile makes a blocking QMP TCP round-trip per persisted VM
+            // (each up to a 5s timeout), and `setup` runs before the window
+            // paints — doing it inline stalls the whole UI on launch. The
+            // frontend polls `list_vms` every few seconds, so reattached VMs
+            // flip to "running" as soon as this finishes (the `running` mutex
+            // keeps it race-safe against concurrent commands).
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                reconcile_running(&handle);
+            });
             Ok(())
         })
         .on_window_event(|window, event| {
