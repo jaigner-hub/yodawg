@@ -259,12 +259,21 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
     // CD-ROM fallback (`order=cd`: c=disk, d=cdrom): a blank disk falls through
     // to the installer, but once the OS is installed the disk boots itself —
     // so the ISO can stay attached without trapping you on the installer.
+    //
+    // `menu=on` enables SeaBIOS's interactive boot menu (press Esc at boot) so
+    // you can force a CD boot when the disk-first order gets in the way. This
+    // matters for multi-stage installers that reboot mid-install and expect to
+    // land back on the CD (FreeDOS partitions, reboots, then formats from the
+    // CD): after partitioning, the half-baked MBR halts with "Invalid partition
+    // table" instead of falling through to the CD, so without a menu you can't
+    // reach the installer's second stage. `splash-time` (ms) widens the prompt
+    // window so it's catchable over VNC, where early keypresses can lag.
     if let Some(iso) = &cfg.iso_path {
         if !iso.is_empty() {
             args.push("-cdrom".into());
             args.push(iso.clone());
             args.push("-boot".into());
-            args.push("order=cd".into());
+            args.push("order=cd,menu=on,splash-time=4000".into());
         }
     }
 
