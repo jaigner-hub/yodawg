@@ -10,7 +10,7 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
 
 ![yodawg running MS-DOS / Windows 3.1 with the Program Manager open](docs/screenshot.png)
 
-> Status: **v0.2.6**. Primary target today is **Windows native** (WHPX).
+> Status: **v0.2.7**. Primary target today is **Windows native** (WHPX).
 > Working codename, subject to change.
 
 ## Features
