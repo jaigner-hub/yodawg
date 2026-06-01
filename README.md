@@ -10,7 +10,7 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
 
 ![yodawg running MS-DOS / Windows 3.1 with the Program Manager open](docs/screenshot.png)
 
-> Status: **v0.2.5**. Primary target today is **Windows native** (WHPX).
+> Status: **v0.2.6**. Primary target today is **Windows native** (WHPX).
 > Working codename, subject to change.
 
 ## Features
@@ -146,9 +146,9 @@ framebuffer renders at native scale and pointer deltas map cleanly.
 ## Roadmap
 
 - SPICE protocol (clipboard sharing, auto display-resize, USB redirection)
-- Bridged / host-only networking (put the guest directly on the physical LAN —
-  needs a TAP driver + admin on Windows)
-- VM-to-VM internal networks (private LAN between guests, no host access)
+- More networking beyond the current NAT / Isolated / port-forwarding: bridged
+  or host-only (guest on the physical LAN — needs a TAP driver + admin on
+  Windows) and VM-to-VM internal networks
 - macOS (HVF) and Linux (KVM) support
 - Disk resize, VM cloning, OVA/OVF import/export
 

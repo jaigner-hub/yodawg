@@ -93,6 +93,15 @@ next launch instead.
   (`-cpu max`/`host` crash WHPX); `-drive file=...,format=qcow2` (the `file=`
   prefix is mandatory); `-usb -device usb-tablet` (absolute pointer, else the
   cursor drifts over VNC); `-boot order=cd` (disk-first, CD fallback).
+- **Networking (`qemu.rs`):** per-VM `net_mode` — `nat` (user-mode NAT,
+  default), `isolated` (`-netdev user,...,restrict=on` — guest gets a DHCP lease
+  but can't reach host/internet; `hostfwd` rules still work), or `none`
+  (`-nic none`, no card). Port forwards become `hostfwd=proto::host-:guest`
+  rules on the netdev. NIC model maps to a `-device` (`e1000`/`virtio-net-pci`/
+  `rtl8139`/`ne2k_isa`); `ne2k` is for DOS guests. Each VM has a **stable MAC**
+  (`52:54:00:xx:xx:xx`, `qemu::derive_mac` from the name) persisted in `vm.json`
+  and passed as `mac=` so DHCP leases / MAC-bound licenses survive reboots; old
+  configs are backfilled on save and at arg-build time.
 - **VMs outlive the app:** spawned QEMU is *not* killed on close. Window-close
   **pauses** running guests (QMP `stop`) and records them to `running.json`; the
   next launch reattaches them (see the lifecycle note under Architecture). The
