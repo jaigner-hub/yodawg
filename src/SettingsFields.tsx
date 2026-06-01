@@ -19,6 +19,31 @@ export function DisplaySelect({
   );
 }
 
+/** Acceleration picker, shared by the create/edit dialogs. */
+export function AccelSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label>
+      Acceleration
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="auto">Hardware — fast (most guests)</option>
+        <option value="tcg">Software — for DOS games / retro</option>
+      </select>
+      {value === "tcg" && (
+        <span className="sub">
+          Software emulation. Slower for heavy guests, but smooth for DOS games
+          that write directly to VGA (e.g. DOOM).
+        </span>
+      )}
+    </label>
+  );
+}
+
 /** Network-card (NIC model) picker, shared by the create/edit dialogs. */
 export function NicSelect({
   value,

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, PortForward } from "./api";
 import {
   DisplaySelect,
+  AccelSelect,
   NicSelect,
   NetModeSelect,
   PortForwardsEditor,
@@ -21,6 +22,7 @@ export function CreateVmDialog({
   const [diskGb, setDiskGb] = useState(20);
   const [isoPath, setIsoPath] = useState<string | null>(null);
   const [displayAdapter, setDisplayAdapter] = useState("std");
+  const [acceleration, setAcceleration] = useState("auto");
   const [nicModel, setNicModel] = useState("e1000");
   const [netMode, setNetMode] = useState("nat");
   const [portForwards, setPortForwards] = useState<PortForward[]>([]);
@@ -46,6 +48,7 @@ export function CreateVmDialog({
         nic_model: nicModel,
         port_forwards: portForwards,
         net_mode: netMode,
+        acceleration,
       });
       onCreated(name.trim());
     } catch (e) {
@@ -116,6 +119,7 @@ export function CreateVmDialog({
         </div>
 
         <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
+        <AccelSelect value={acceleration} onChange={setAcceleration} />
         <NetModeSelect value={netMode} onChange={setNetMode} />
         {netMode !== "none" && (
           <>

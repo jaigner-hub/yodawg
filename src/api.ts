@@ -22,6 +22,7 @@ export interface VmStatus {
   port_forwards: PortForward[];
   net_mode: string; // "nat" | "isolated" | "none"
   mac_address?: string | null;
+  acceleration: string; // "auto" | "tcg"
   running: boolean;
   websocket_port?: number | null;
 }
@@ -52,6 +53,7 @@ export interface CreateVmParams {
   nic_model: string;
   port_forwards: PortForward[];
   net_mode: string; // "nat" | "isolated" | "none"
+  acceleration: string; // "auto" | "tcg"
 }
 
 export const api = {
@@ -70,6 +72,7 @@ export const api = {
       nicModel: p.nic_model,
       portForwards: p.port_forwards,
       netMode: p.net_mode,
+      acceleration: p.acceleration,
     }),
   updateVm: (p: {
     name: string;
@@ -80,6 +83,7 @@ export const api = {
     nic_model: string;
     port_forwards: PortForward[];
     net_mode: string;
+    acceleration: string;
   }) =>
     invoke<void>("update_vm", {
       name: p.name,
@@ -90,6 +94,7 @@ export const api = {
       nicModel: p.nic_model,
       portForwards: p.port_forwards,
       netMode: p.net_mode,
+      acceleration: p.acceleration,
     }),
   detachIso: (name: string) => invoke<void>("detach_iso", { name }),
   deleteVm: (name: string) => invoke<void>("delete_vm", { name }),
@@ -102,8 +107,8 @@ export const api = {
     invoke<RunningInfo | null>("running_info", { name }),
 
   // Snapshots. Single-word args (name/tag) need no camelCase mapping.
-  liveSnapshotsSupported: () =>
-    invoke<boolean>("live_snapshots_supported"),
+  liveSnapshotsSupported: (name: string) =>
+    invoke<boolean>("live_snapshots_supported", { name }),
   listSnapshots: (name: string) =>
     invoke<Snapshot[]>("list_snapshots", { name }),
   createSnapshot: (name: string, tag: string) =>

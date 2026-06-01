@@ -156,6 +156,7 @@ fn create_vm(
     nic_model: String,
     port_forwards: Vec<vm::PortForward>,
     net_mode: String,
+    acceleration: String,
 ) -> Result<(), String> {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -193,6 +194,7 @@ fn create_vm(
         port_forwards,
         net_mode,
         mac_address,
+        acceleration,
     };
 
     // Persist config first (creates the directory), then create the disk in it.
@@ -214,6 +216,7 @@ fn update_vm(
     nic_model: String,
     port_forwards: Vec<vm::PortForward>,
     net_mode: String,
+    acceleration: String,
 ) -> Result<(), String> {
     if memory_mb < 64 {
         return Err("Memory must be at least 64 MB".into());
@@ -230,6 +233,7 @@ fn update_vm(
     cfg.nic_model = nic_model;
     cfg.port_forwards = port_forwards;
     cfg.net_mode = net_mode;
+    cfg.acceleration = acceleration;
     // Backfill a stable MAC for VMs created before the field existed.
     if cfg.mac_address.is_none() {
         cfg.mac_address = Some(qemu::derive_mac(&cfg.name));
@@ -459,10 +463,13 @@ const LIVE_UNSUPPORTED: &str =
     "Live snapshots aren't supported by this VM's accelerator (WHPX on Windows / \
 HVF on macOS). Shut the VM down first, then snapshot its disk.";
 
-/// Whether snapshots can be taken/restored while a VM is running on this host.
+/// Whether snapshots can be taken/restored while this VM is running. Depends on
+/// the VM's accelerator (TCG/KVM support it; WHPX/HVF don't).
 #[tauri::command]
-fn live_snapshots_supported() -> bool {
-    qemu::live_snapshots_supported()
+fn live_snapshots_supported(app: AppHandle, name: String) -> Result<bool, String> {
+    let dir = app_data(&app)?;
+    let cfg = vm::load(&dir, &name)?;
+    Ok(qemu::live_snapshots_supported(&cfg))
 }
 
 /// List the snapshots stored in a VM's disk. Works whether or not it's running.
@@ -483,14 +490,12 @@ fn create_snapshot(
     tag: String,
 ) -> Result<(), String> {
     validate_tag(&tag)?;
+    let dir = app_data(&app)?;
+    let cfg = vm::load(&dir, &name)?;
     match qmp_port_if_running(&state, &name) {
-        Some(_) if !qemu::live_snapshots_supported() => Err(LIVE_UNSUPPORTED.into()),
+        Some(_) if !qemu::live_snapshots_supported(&cfg) => Err(LIVE_UNSUPPORTED.into()),
         Some(port) => qmp::hmp(port, &format!("savevm {tag}")),
-        None => {
-            let dir = app_data(&app)?;
-            let cfg = vm::load(&dir, &name)?;
-            qemu::snapshot_create_offline(&cfg.disk_path, &tag)
-        }
+        None => qemu::snapshot_create_offline(&cfg.disk_path, &tag),
     }
 }
 
@@ -503,14 +508,12 @@ fn restore_snapshot(
     name: String,
     tag: String,
 ) -> Result<(), String> {
+    let dir = app_data(&app)?;
+    let cfg = vm::load(&dir, &name)?;
     match qmp_port_if_running(&state, &name) {
-        Some(_) if !qemu::live_snapshots_supported() => Err(LIVE_UNSUPPORTED.into()),
+        Some(_) if !qemu::live_snapshots_supported(&cfg) => Err(LIVE_UNSUPPORTED.into()),
         Some(port) => qmp::hmp(port, &format!("loadvm {tag}")),
-        None => {
-            let dir = app_data(&app)?;
-            let cfg = vm::load(&dir, &name)?;
-            qemu::snapshot_apply_offline(&cfg.disk_path, &tag)
-        }
+        None => qemu::snapshot_apply_offline(&cfg.disk_path, &tag),
     }
 }
 

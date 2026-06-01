@@ -111,23 +111,38 @@ fn accelerator() -> &'static str {
     }
 }
 
-/// Whether the current accelerator supports live (running-VM) snapshots.
+/// The accelerator to actually launch this VM with. `"tcg"` (set per-VM) forces
+/// pure software emulation; anything else uses the platform's hardware
+/// accelerator. TCG is slower for CPU-bound guests but avoids the VM-exit storm
+/// that hardware hypervisors hit on direct planar-VGA writes (DOS games).
+fn effective_accel(cfg: &VmConfig) -> &'static str {
+    if cfg.acceleration == "tcg" {
+        "tcg"
+    } else {
+        accelerator()
+    }
+}
+
+/// Whether snapshots can be taken/restored while *this* VM is running.
 ///
-/// `savevm`/`loadvm` save and restore migratable vCPU + RAM state. KVM provides
-/// that; WHPX (Windows) and HVF (macOS) do not — QEMU rejects the save with
-/// "State blocked due to non-migratable CPUID/dirty-memory/XSAVE support". So on
-/// those platforms snapshots are only available while the VM is stopped
-/// (disk-only, via `qemu-img`).
-pub fn live_snapshots_supported() -> bool {
-    cfg!(target_os = "linux")
+/// `savevm`/`loadvm` save and restore migratable vCPU + RAM state. KVM and TCG
+/// provide that; WHPX (Windows) and HVF (macOS) do not — QEMU rejects the save
+/// with "State blocked due to non-migratable CPUID/dirty-memory/XSAVE support".
+/// So under those accelerators snapshots are only available while the VM is
+/// stopped (disk-only, via `qemu-img`). A TCG VM supports live snapshots on any
+/// host.
+pub fn live_snapshots_supported(cfg: &VmConfig) -> bool {
+    matches!(effective_accel(cfg), "tcg" | "kvm")
 }
 
 /// A CPU model that is safe for the chosen accelerator.
 ///
 /// `-cpu max`/`-cpu host` crash WHPX due to feature conflicts (APX vs MPX), so
-/// on Windows we pin a conservative model. KVM/HVF can use the host CPU.
-fn cpu_model() -> &'static str {
-    if cfg!(target_os = "windows") {
+/// on Windows we pin a conservative model. KVM/HVF can use the host CPU. TCG
+/// can't passthrough the host CPU at all (`-cpu host` is invalid under software
+/// emulation), so a TCG VM always gets the conservative `qemu64`.
+fn cpu_model(cfg: &VmConfig) -> &'static str {
+    if effective_accel(cfg) == "tcg" || cfg!(target_os = "windows") {
         "qemu64"
     } else {
         "host"
@@ -281,9 +296,9 @@ pub struct LaunchPorts {
 pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
     let mut args: Vec<String> = vec![
         "-accel".into(),
-        accelerator().into(),
+        effective_accel(cfg).into(),
         "-cpu".into(),
-        cpu_model().into(),
+        cpu_model(cfg).into(),
         "-m".into(),
         cfg.memory_mb.to_string(),
         "-smp".into(),

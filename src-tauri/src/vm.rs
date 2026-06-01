@@ -37,6 +37,10 @@ fn default_net_mode() -> String {
     "nat".into()
 }
 
+fn default_acceleration() -> String {
+    "auto".into()
+}
+
 /// Persistent configuration for a single virtual machine.
 ///
 /// New fields use `#[serde(default ...)]` so older `vm.json` files (written
@@ -75,6 +79,14 @@ pub struct VmConfig {
     /// deterministic MAC from the VM name in that case.
     #[serde(default)]
     pub mac_address: Option<String>,
+    /// Acceleration mode: "auto" (the platform's hardware accelerator — WHPX on
+    /// Windows, HVF on macOS, KVM on Linux — the default) or "tcg" (pure software
+    /// emulation). TCG is slower for CPU-bound guests but far faster for DOS
+    /// games that write directly to planar VGA: under a hardware hypervisor each
+    /// such write traps into QEMU's VGA emulation (a VM-exit storm), which TCG
+    /// avoids entirely. See `qemu.rs::effective_accel`.
+    #[serde(default = "default_acceleration")]
+    pub acceleration: String,
 }
 
 /// The directory holding all machine subdirectories.

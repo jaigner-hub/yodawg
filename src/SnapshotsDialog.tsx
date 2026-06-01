@@ -32,9 +32,9 @@ export function SnapshotsDialog({
   }, [vm.name]);
 
   useEffect(() => {
-    api.liveSnapshotsSupported().then(setLiveSupported).catch(() => {});
+    api.liveSnapshotsSupported(vm.name).then(setLiveSupported).catch(() => {});
     refresh();
-  }, [refresh]);
+  }, [refresh, vm.name]);
 
   // Run a snapshot op, then refresh the list. `busy` guards against overlap.
   async function run(fn: () => Promise<unknown>) {
