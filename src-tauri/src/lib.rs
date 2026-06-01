@@ -155,6 +155,7 @@ fn create_vm(
     display_adapter: String,
     nic_model: String,
     port_forwards: Vec<vm::PortForward>,
+    net_mode: String,
 ) -> Result<(), String> {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -176,6 +177,10 @@ fn create_vm(
         .to_string_lossy()
         .into_owned();
 
+    // Generate and persist a stable MAC up front so it shows in the UI and
+    // never changes for this VM.
+    let mac_address = Some(qemu::derive_mac(&name));
+
     let cfg = VmConfig {
         name,
         memory_mb,
@@ -186,6 +191,8 @@ fn create_vm(
         display_adapter,
         nic_model,
         port_forwards,
+        net_mode,
+        mac_address,
     };
 
     // Persist config first (creates the directory), then create the disk in it.
@@ -206,6 +213,7 @@ fn update_vm(
     display_adapter: String,
     nic_model: String,
     port_forwards: Vec<vm::PortForward>,
+    net_mode: String,
 ) -> Result<(), String> {
     if memory_mb < 64 {
         return Err("Memory must be at least 64 MB".into());
@@ -221,6 +229,11 @@ fn update_vm(
     cfg.display_adapter = display_adapter;
     cfg.nic_model = nic_model;
     cfg.port_forwards = port_forwards;
+    cfg.net_mode = net_mode;
+    // Backfill a stable MAC for VMs created before the field existed.
+    if cfg.mac_address.is_none() {
+        cfg.mac_address = Some(qemu::derive_mac(&cfg.name));
+    }
     vm::save(&dir, &cfg)
 }
 

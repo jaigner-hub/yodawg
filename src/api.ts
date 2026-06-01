@@ -20,6 +20,8 @@ export interface VmStatus {
   display_adapter: string;
   nic_model: string;
   port_forwards: PortForward[];
+  net_mode: string; // "nat" | "isolated" | "none"
+  mac_address?: string | null;
   running: boolean;
   websocket_port?: number | null;
 }
@@ -49,6 +51,7 @@ export interface CreateVmParams {
   display_adapter: string;
   nic_model: string;
   port_forwards: PortForward[];
+  net_mode: string; // "nat" | "isolated" | "none"
 }
 
 export const api = {
@@ -66,6 +69,7 @@ export const api = {
       displayAdapter: p.display_adapter,
       nicModel: p.nic_model,
       portForwards: p.port_forwards,
+      netMode: p.net_mode,
     }),
   updateVm: (p: {
     name: string;
@@ -75,6 +79,7 @@ export const api = {
     display_adapter: string;
     nic_model: string;
     port_forwards: PortForward[];
+    net_mode: string;
   }) =>
     invoke<void>("update_vm", {
       name: p.name,
@@ -84,6 +89,7 @@ export const api = {
       displayAdapter: p.display_adapter,
       nicModel: p.nic_model,
       portForwards: p.port_forwards,
+      netMode: p.net_mode,
     }),
   detachIso: (name: string) => invoke<void>("detach_iso", { name }),
   deleteVm: (name: string) => invoke<void>("delete_vm", { name }),

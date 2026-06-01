@@ -40,6 +40,26 @@ export function NicSelect({
   );
 }
 
+/** Networking-mode picker, shared by the create/edit dialogs. */
+export function NetModeSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label>
+      Networking
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="nat">NAT — share the host's internet</option>
+        <option value="isolated">Isolated — no host/internet access</option>
+        <option value="none">None — no network adapter</option>
+      </select>
+    </label>
+  );
+}
+
 /** Editor for host→guest port forwards over the user-mode NAT. */
 export function PortForwardsEditor({
   value,

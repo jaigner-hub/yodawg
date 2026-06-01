@@ -33,6 +33,10 @@ fn default_nic_model() -> String {
     "e1000".into()
 }
 
+fn default_net_mode() -> String {
+    "nat".into()
+}
+
 /// Persistent configuration for a single virtual machine.
 ///
 /// New fields use `#[serde(default ...)]` so older `vm.json` files (written
@@ -59,6 +63,18 @@ pub struct VmConfig {
     /// Host→guest port forwards over user-mode NAT.
     #[serde(default)]
     pub port_forwards: Vec<PortForward>,
+    /// Networking mode: "nat" (user-mode NAT with internet access, the
+    /// default), "isolated" (user-mode NAT with `restrict=on` — the guest gets
+    /// a DHCP lease but can't reach the host or the internet), or "none" (no
+    /// NIC at all). See `qemu.rs::build_args`.
+    #[serde(default = "default_net_mode")]
+    pub net_mode: String,
+    /// Stable MAC address (e.g. "52:54:00:ab:cd:ef"), persisted so the guest
+    /// keeps the same DHCP lease and any MAC-bound licenses across reboots.
+    /// `None` on configs written before this field existed; `qemu.rs` derives a
+    /// deterministic MAC from the VM name in that case.
+    #[serde(default)]
+    pub mac_address: Option<String>,
 }
 
 /// The directory holding all machine subdirectories.

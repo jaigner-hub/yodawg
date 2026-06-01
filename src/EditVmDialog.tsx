@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { api, VmStatus, PortForward } from "./api";
-import { DisplaySelect, NicSelect, PortForwardsEditor } from "./SettingsFields";
+import {
+  DisplaySelect,
+  NicSelect,
+  NetModeSelect,
+  PortForwardsEditor,
+} from "./SettingsFields";
 
 /** Modal form for editing a stopped VM's settings (memory, CPUs, ISO). */
 export function EditVmDialog({
@@ -17,6 +22,7 @@ export function EditVmDialog({
   const [isoPath, setIsoPath] = useState<string | null>(vm.iso_path ?? null);
   const [displayAdapter, setDisplayAdapter] = useState(vm.display_adapter ?? "std");
   const [nicModel, setNicModel] = useState(vm.nic_model ?? "e1000");
+  const [netMode, setNetMode] = useState(vm.net_mode ?? "nat");
   const [portForwards, setPortForwards] = useState<PortForward[]>(
     vm.port_forwards ?? []
   );
@@ -40,6 +46,7 @@ export function EditVmDialog({
         display_adapter: displayAdapter,
         nic_model: nicModel,
         port_forwards: portForwards,
+        net_mode: netMode,
       });
       onSaved();
     } catch (e) {
@@ -104,8 +111,22 @@ export function EditVmDialog({
         </div>
 
         <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
-        <NicSelect value={nicModel} onChange={setNicModel} />
-        <PortForwardsEditor value={portForwards} onChange={setPortForwards} />
+        <NetModeSelect value={netMode} onChange={setNetMode} />
+        {netMode !== "none" && (
+          <>
+            <NicSelect value={nicModel} onChange={setNicModel} />
+            {vm.mac_address && (
+              <label>
+                MAC address
+                <input readOnly value={vm.mac_address} />
+              </label>
+            )}
+            <PortForwardsEditor
+              value={portForwards}
+              onChange={setPortForwards}
+            />
+          </>
+        )}
 
         <p className="hint">Changes take effect the next time the VM starts.</p>
         {error && <p className="error">{error}</p>}

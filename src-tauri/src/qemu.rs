@@ -134,6 +134,26 @@ fn cpu_model() -> &'static str {
     }
 }
 
+/// A deterministic MAC address for a VM, derived from its name.
+///
+/// Uses QEMU's standard `52:54:00` OUI for the first three octets and a hash of
+/// the name for the last three, so the same VM always gets the same MAC (stable
+/// DHCP lease) while different VMs almost never collide. Generated once at
+/// create time and persisted; this is the fallback for configs that predate the
+/// stored `mac_address` field.
+pub fn derive_mac(name: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    name.hash(&mut h);
+    let n = h.finish();
+    format!(
+        "52:54:00:{:02x}:{:02x}:{:02x}",
+        (n >> 16) as u8,
+        (n >> 8) as u8,
+        n as u8,
+    )
+}
+
 /// Create a qcow2 disk image of the given size (in GiB).
 pub fn create_disk(path: &str, size_gb: u32) -> Result<(), String> {
     let mut cmd = Command::new(img_binary());
@@ -318,32 +338,55 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
     args.push("-device".into());
     args.push("usb-tablet".into());
 
-    // User-mode (NAT) networking. Specifying a netdev/device suppresses QEMU's
-    // implicit default NIC. Any configured port forwards are appended as
-    // `hostfwd` rules (host:hostPort -> guest:guestPort).
-    let mut netdev = String::from("user,id=net0");
-    for pf in &cfg.port_forwards {
-        let proto = if pf.protocol == "udp" { "udp" } else { "tcp" };
-        netdev.push_str(&format!(
-            ",hostfwd={proto}::{}-:{}",
-            pf.host_port, pf.guest_port
-        ));
+    // Networking. "none" means no NIC at all (QEMU still adds an implicit
+    // default NIC unless we suppress it, so pass `-nic none`). "nat" and
+    // "isolated" both use the user-mode (NAT) backend; "isolated" adds
+    // `restrict=on`, which gives the guest a DHCP lease but blocks it from
+    // reaching the host or the internet. Specifying a netdev/device suppresses
+    // QEMU's implicit default NIC.
+    if cfg.net_mode == "none" {
+        args.push("-nic".into());
+        args.push("none".into());
+    } else {
+        let mut netdev = String::from("user,id=net0");
+        if cfg.net_mode == "isolated" {
+            netdev.push_str(",restrict=on");
+        }
+        // Port forwards (host:hostPort -> guest:guestPort) are appended as
+        // `hostfwd` rules. They keep working under `restrict=on` — restrict
+        // only blocks guest-initiated traffic, not host->guest redirection.
+        for pf in &cfg.port_forwards {
+            let proto = if pf.protocol == "udp" { "udp" } else { "tcp" };
+            netdev.push_str(&format!(
+                ",hostfwd={proto}::{}-:{}",
+                pf.host_port, pf.guest_port
+            ));
+        }
+        args.push("-netdev".into());
+        args.push(netdev);
+
+        // A stable MAC keeps the guest's DHCP lease and any MAC-bound licenses
+        // constant across reboots. Old configs predate the field, so derive a
+        // deterministic one from the VM name when it's absent.
+        let mac = cfg
+            .mac_address
+            .clone()
+            .unwrap_or_else(|| derive_mac(&cfg.name));
+
+        // NIC model. e1000 suits modern guests (Linux/Windows have drivers),
+        // but DOS-era guests only ship NE2000 packet drivers — those probe an
+        // ISA card at I/O 0x300 / IRQ 9, which `ne2k_isa` provides by default,
+        // so the driver finds it without reconfiguration. Wrong model => the
+        // guest's driver finds no card and reports an all-FF MAC with no lease.
+        let model = match cfg.nic_model.as_str() {
+            "ne2k" => "ne2k_isa",
+            "rtl8139" => "rtl8139",
+            "virtio" => "virtio-net-pci",
+            _ => "e1000", // default / "e1000"
+        };
+        args.push("-device".into());
+        args.push(format!("{model},netdev=net0,mac={mac}"));
     }
-    args.push("-netdev".into());
-    args.push(netdev);
-    // NIC model. e1000 suits modern guests (Linux/Windows have drivers), but
-    // DOS-era guests only ship NE2000 packet drivers — those probe an ISA card
-    // at I/O 0x300 / IRQ 9, which `ne2k_isa` provides by default, so the driver
-    // finds it without reconfiguration. Wrong model => the guest's driver finds
-    // no card and reports an all-FF MAC with no DHCP lease.
-    let nic_device = match cfg.nic_model.as_str() {
-        "ne2k" => "ne2k_isa,netdev=net0",
-        "rtl8139" => "rtl8139,netdev=net0",
-        "virtio" => "virtio-net-pci,netdev=net0",
-        _ => "e1000,netdev=net0", // default / "e1000"
-    };
-    args.push("-device".into());
-    args.push(nic_device.into());
 
     // VGA model: "std" (broad compatibility) or "virtio" (faster for Linux).
     let vga = if cfg.display_adapter == "virtio" {

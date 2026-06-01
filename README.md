@@ -25,10 +25,13 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
   kill (disk writes are flushed first so nothing is lost), and delete.
 - **Snapshots** — save and restore full VM state. Snapshots can be taken live on
   a running guest where QEMU supports it.
-- **Networking** — host→guest **port forwarding** over user-mode NAT, plus a
-  selectable NIC model (Intel e1000, VirtIO, RTL8139, NE2000 for DOS).
-- **Edit settings** — change RAM, CPUs, display/network adapter, port forwards,
-  and the attached ISO of a stopped VM; eject the ISO.
+- **Networking** — pick a mode (**NAT** with internet access, **Isolated** —
+  the guest gets a DHCP lease but can't reach the host or internet, or **None**),
+  set up host→guest **port forwarding**, and choose the NIC model (Intel e1000,
+  VirtIO, RTL8139, NE2000 for DOS). Each VM keeps a **stable MAC** so DHCP leases
+  and MAC-bound licenses survive reboots.
+- **Edit settings** — change RAM, CPUs, display/network adapter, networking mode,
+  port forwards, and the attached ISO of a stopped VM; eject the ISO.
 - **Just works defaults** — acceleration and a safe CPU model are auto-selected
   per platform; absolute-pointer mouse (USB tablet) so the cursor tracks 1:1;
   disk-first boot order so installed systems boot themselves.
@@ -143,7 +146,9 @@ framebuffer renders at native scale and pointer deltas map cleanly.
 ## Roadmap
 
 - SPICE protocol (clipboard sharing, auto display-resize, USB redirection)
-- More networking (bridged / host-only, beyond user-mode NAT port forwarding)
+- Bridged / host-only networking (put the guest directly on the physical LAN —
+  needs a TAP driver + admin on Windows)
+- VM-to-VM internal networks (private LAN between guests, no host access)
 - macOS (HVF) and Linux (KVM) support
 - Disk resize, VM cloning, OVA/OVF import/export
 

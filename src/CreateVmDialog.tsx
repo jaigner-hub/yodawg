@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { api, PortForward } from "./api";
-import { DisplaySelect, NicSelect, PortForwardsEditor } from "./SettingsFields";
+import {
+  DisplaySelect,
+  NicSelect,
+  NetModeSelect,
+  PortForwardsEditor,
+} from "./SettingsFields";
 
 /** Modal form that collects the fields needed to create + boot a new VM. */
 export function CreateVmDialog({
@@ -17,6 +22,7 @@ export function CreateVmDialog({
   const [isoPath, setIsoPath] = useState<string | null>(null);
   const [displayAdapter, setDisplayAdapter] = useState("std");
   const [nicModel, setNicModel] = useState("e1000");
+  const [netMode, setNetMode] = useState("nat");
   const [portForwards, setPortForwards] = useState<PortForward[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +45,7 @@ export function CreateVmDialog({
         display_adapter: displayAdapter,
         nic_model: nicModel,
         port_forwards: portForwards,
+        net_mode: netMode,
       });
       onCreated(name.trim());
     } catch (e) {
@@ -109,8 +116,16 @@ export function CreateVmDialog({
         </div>
 
         <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
-        <NicSelect value={nicModel} onChange={setNicModel} />
-        <PortForwardsEditor value={portForwards} onChange={setPortForwards} />
+        <NetModeSelect value={netMode} onChange={setNetMode} />
+        {netMode !== "none" && (
+          <>
+            <NicSelect value={nicModel} onChange={setNicModel} />
+            <PortForwardsEditor
+              value={portForwards}
+              onChange={setPortForwards}
+            />
+          </>
+        )}
 
         {error && <p className="error">{error}</p>}
 
