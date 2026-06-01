@@ -2,6 +2,18 @@
 
 Guidance for working in this repository.
 
+## Working principles
+
+- **Ask, don't assume.** If something's unclear, ask before writing a line. No
+  silent guesses about intent, architecture, or requirements.
+- **Simplest solution first.** Implement the minimum thing that works. No
+  abstractions you didn't request.
+- **Don't touch unrelated code.** If a file isn't part of the current task,
+  leave it.
+- **Flag uncertainty explicitly.** If you're not confident, say so before
+  proceeding — confidence without certainty causes more damage than admitting a
+  gap.
+
 ## What this is
 
 **yodawg** is a friendly GUI wrapper around QEMU — see [README.md](./README.md).
