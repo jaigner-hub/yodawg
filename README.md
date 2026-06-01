@@ -8,19 +8,27 @@ great desktop UI for it. yodawg wraps QEMU so normal people can create, run, and
 manage virtual machines without touching a flag, while still getting native
 hardware acceleration (WHPX on Windows, and KVM/HVF later).
 
-> Status: **v0.1 (MVP)**. Primary target today is **Windows native** (WHPX).
+![yodawg running MS-DOS / Windows 3.1 with the Program Manager open](docs/screenshot.png)
+
+> Status: **v0.2.5**. Primary target today is **Windows native** (WHPX).
 > Working codename, subject to change.
 
 ## Features
 
-- **Create-VM wizard** — pick an ISO, set RAM / CPU / disk size, and it creates
-  the `qcow2` disk and boots.
-- **VM list** with live running/stopped status.
+- **Create-VM wizard** — pick an ISO, set RAM / CPU / disk size, choose a
+  display and network adapter, and it creates the `qcow2` disk and boots.
+- **VM list** with live running / paused / stopped status.
 - **Embedded display** — the VM renders right inside the app window (QEMU VNC
-  websocket + [noVNC](https://novnc.com/)).
-- **Lifecycle controls** — start, graceful ACPI shutdown, force kill, delete.
-- **Edit settings** — change RAM, CPUs, and the attached ISO of a stopped VM;
-  eject the ISO.
+  websocket + [noVNC](https://novnc.com/)), with a **Fit ⇄ 1:1** toggle. 1:1
+  fixes mouse drift on guests that only have a relative pointer (DOS, Windows 3.1).
+- **Lifecycle controls** — start, graceful ACPI shutdown, pause / resume, force
+  kill (disk writes are flushed first so nothing is lost), and delete.
+- **Snapshots** — save and restore full VM state. Snapshots can be taken live on
+  a running guest where QEMU supports it.
+- **Networking** — host→guest **port forwarding** over user-mode NAT, plus a
+  selectable NIC model (Intel e1000, VirtIO, RTL8139, NE2000 for DOS).
+- **Edit settings** — change RAM, CPUs, display/network adapter, port forwards,
+  and the attached ISO of a stopped VM; eject the ISO.
 - **Just works defaults** — acceleration and a safe CPU model are auto-selected
   per platform; absolute-pointer mouse (USB tablet) so the cursor tracks 1:1;
   disk-first boot order so installed systems boot themselves.
@@ -83,14 +91,16 @@ the NSIS hook in `src-tauri/installer/hooks.nsh`.
   processes, controls them over QMP, and persists VM configs.
   - `qemu.rs` — binary discovery, acceleration/CPU selection, QEMU argument
     building, disk creation, free-port allocation.
-  - `qmp.rs` — minimal QEMU Monitor Protocol client (shutdown, pause, status).
+  - `qmp.rs` — minimal QEMU Monitor Protocol client (shutdown, pause, status,
+    snapshots).
   - `vm.rs` — VM config model and on-disk persistence.
   - `session.rs` — records background VMs so a relaunch can reattach to them.
   - `procutil.rs` — Windows PID liveness/terminate helpers for reattached VMs.
   - `lib.rs` — runtime state and the Tauri commands the frontend calls.
 
 The display uses **VNC** (QEMU's built-in VNC server with a websocket listener,
-which noVNC connects to directly — no separate proxy). SPICE is a future option.
+which noVNC connects to directly — no separate proxy). Control runs over **QMP**
+(QEMU Monitor Protocol) on a TCP socket. SPICE is a future option.
 
 ### Where VMs live
 
@@ -98,8 +108,8 @@ which noVNC connects to directly — no separate proxy). SPICE is a future optio
 %APPDATA%/com.yodawg.app/
 ├── running.json              # VMs left running/paused in the background
 └── machines/<name>/
-    ├── vm.json               # VM config (RAM, CPU, disk path, ISO, ...)
-    ├── disk.qcow2            # virtual disk
+    ├── vm.json               # VM config (RAM, CPU, disk, ISO, adapters, port forwards, ...)
+    ├── disk.qcow2            # virtual disk (also holds snapshots)
     └── qemu.log             # QEMU stdout/stderr from the last launch
 ```
 
@@ -124,14 +134,21 @@ Fix it from inside the guest, one time:
    In `FDISK`, also confirm partition 1 is set **Active** (option 2).
 3. Shut down, **Detach ISO**, and boot — it should now boot standalone to `C:`.
 
+### Mouse drifts or won't reach the screen edges (DOS, Windows 3.1)
+
+Older guests with only a relative pointing device can't track an absolute
+cursor over VNC. Click the **1:1** toggle (top-right of the display) so the
+framebuffer renders at native scale and pointer deltas map cleanly.
+
 ## Roadmap
 
-- Snapshots (save/restore VM state)
-- Networking options (port forwarding, NAT / bridged / host-only)
 - SPICE protocol (clipboard sharing, auto display-resize, USB redirection)
+- More networking (bridged / host-only, beyond user-mode NAT port forwarding)
 - macOS (HVF) and Linux (KVM) support
 - Disk resize, VM cloning, OVA/OVF import/export
 
 ## License
 
-TBD.
+[MIT](LICENSE) © Jeff Aigner
+</content>
+</invoke>
