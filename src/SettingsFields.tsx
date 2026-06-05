@@ -13,8 +13,19 @@ export function DisplaySelect({
       Display adapter
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="std">Standard — most compatible</option>
-        <option value="virtio">VirtIO — faster (Linux guests)</option>
+        <option value="virtio">VirtIO — fast + resizes well (Linux/SPICE)</option>
+        <option value="qxl">QXL — for virt-viewer (SPICE)</option>
       </select>
+      {(value === "qxl" || value === "virtio") && (
+        <span className="sub">
+          Best with the virt-viewer (SPICE) window for dynamic resolution.
+          Needs spice-vdagent in the guest for auto-resize. If resize stops
+          tracking on a GNOME/Wayland guest, it has pinned the resolution —
+          delete <code>~/.config/monitors.xml</code> in the guest and log back
+          in, and don't set a fixed resolution in Settings → Displays (that
+          re-creates the file).
+        </span>
+      )}
     </label>
   );
 }

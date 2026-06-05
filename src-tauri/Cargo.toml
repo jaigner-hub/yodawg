@@ -1,6 +1,6 @@
 [package]
 name = "yodawg"
-version = "0.2.9"
+version = "0.2.10"
 description = "A friendly GUI wrapper around QEMU"
 authors = ["Jeff Aigner <jeff.aigner@gmail.com>"]
 license = "MIT"

@@ -287,6 +287,50 @@ pub struct LaunchPorts {
     pub vnc_display: u16,
     pub websocket_port: u16,
     pub qmp_port: u16,
+    /// SPICE server port for the external virt-viewer client (separate from the
+    /// VNC/noVNC path, which keeps using `vnc_display`/`websocket_port`).
+    pub spice_port: u16,
+}
+
+/// Full path to virt-viewer's `remote-viewer`, or `None` if it can't be found.
+///
+/// On Windows, the order is: the `YODAWG_VIRT_VIEWER` env override (a full path
+/// to the exe), then a scan of the Program Files dirs for a
+/// `VirtViewer*\bin\remote-viewer.exe`. The installer creates a version-stamped
+/// directory (e.g. `VirtViewer v11.0-256`), so we glob the prefix rather than
+/// hardcode a version. virt-viewer doesn't add itself to PATH, so there's no
+/// bare-name fallback — `None` lets the caller surface an install hint. On other
+/// platforms `remote-viewer` is normally on PATH, so return the bare name.
+#[cfg(target_os = "windows")]
+pub fn viewer_binary() -> Option<String> {
+    if let Ok(p) = std::env::var("YODAWG_VIRT_VIEWER") {
+        if PathBuf::from(&p).exists() {
+            return Some(p);
+        }
+    }
+    let roots = [
+        std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into()),
+        std::env::var("ProgramFiles(x86)")
+            .unwrap_or_else(|_| r"C:\Program Files (x86)".into()),
+    ];
+    for root in roots {
+        if let Ok(entries) = std::fs::read_dir(&root) {
+            for entry in entries.flatten() {
+                if entry.file_name().to_string_lossy().starts_with("VirtViewer") {
+                    let exe = entry.path().join("bin").join("remote-viewer.exe");
+                    if exe.exists() {
+                        return Some(exe.to_string_lossy().into_owned());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn viewer_binary() -> Option<String> {
+    Some("remote-viewer".into())
 }
 
 /// Build the full QEMU argument vector for a VM.
@@ -419,11 +463,14 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
         args.push(format!("{model},netdev=net0,mac={mac}"));
     }
 
-    // VGA model: "std" (broad compatibility) or "virtio" (faster for Linux).
-    let vga = if cfg.display_adapter == "virtio" {
-        "virtio"
-    } else {
-        "std"
+    // VGA model: "std" (broad compatibility), "virtio" (faster for Linux), or
+    // "qxl" (the SPICE-native adapter — gives the virt-viewer client dynamic
+    // resolution / auto-resize and smoother updates; `-vga qxl` maps to the
+    // qxl-vga primary device). qxl still renders fine over VNC too.
+    let vga = match cfg.display_adapter.as_str() {
+        "virtio" => "virtio",
+        "qxl" => "qxl",
+        _ => "std",
     };
     args.push("-vga".into());
     args.push(vga.into());
@@ -436,6 +483,26 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
         "127.0.0.1:{},websocket={}",
         ports.vnc_display, ports.websocket_port
     ));
+
+    // SPICE server, running *alongside* the VNC server above (QEMU serves both
+    // from the same console). The embedded noVNC viewer keeps using VNC; SPICE
+    // is for the external virt-viewer (remote-viewer) client, which adds
+    // clipboard sharing, dynamic resolution, and USB redirection that the VNC
+    // path can't do. We only listen on loopback, so `disable-ticketing=on`
+    // skips password auth. The vdagent channel (virtio-serial + a `vdagent`
+    // spicevmc chardev) carries guest-agent traffic for clipboard/auto-resize
+    // when the guest has spice-vdagent installed — harmless when it doesn't.
+    args.push("-spice".into());
+    args.push(format!(
+        "port={},addr=127.0.0.1,disable-ticketing=on",
+        ports.spice_port
+    ));
+    args.push("-device".into());
+    args.push("virtio-serial-pci".into());
+    args.push("-chardev".into());
+    args.push("spicevmc,id=spicechannel0,name=vdagent".into());
+    args.push("-device".into());
+    args.push("virtserialport,chardev=spicechannel0,name=com.redhat.spice.0".into());
 
     // QMP control channel for lifecycle commands.
     args.push("-qmp".into());

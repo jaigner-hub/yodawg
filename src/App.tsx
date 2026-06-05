@@ -140,6 +140,12 @@ export default function App() {
                       Force kill
                     </button>
                     <button onClick={() => setShowSnapshots(true)}>Snapshots</button>
+                    <button
+                      title="Open this VM in virt-viewer (SPICE) — clipboard, dynamic resolution, USB redirection"
+                      onClick={() => withErrors(() => api.openInViewer(current.name))}
+                    >
+                      Open in virt-viewer
+                    </button>
                   </>
                 ) : (
                   <>

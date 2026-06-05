@@ -28,6 +28,7 @@ struct RunningVm {
     vnc_display: u16,
     websocket_port: u16,
     qmp_port: u16,
+    spice_port: u16,
 }
 
 /// App-wide runtime state: name -> running process.
@@ -45,6 +46,7 @@ struct RunningInfo {
     websocket_port: u16,
     vnc_display: u16,
     qmp_port: u16,
+    spice_port: u16,
     /// Whether the guest's vCPUs are currently paused (QMP `stop`).
     paused: bool,
 }
@@ -103,6 +105,7 @@ fn persist_running(app: &AppHandle, running: &HashMap<String, RunningVm>) {
                 vnc_display: rv.vnc_display,
                 websocket_port: rv.websocket_port,
                 qmp_port: rv.qmp_port,
+                spice_port: rv.spice_port,
             })
             .collect();
         let _ = session::save(&dir, &list);
@@ -317,6 +320,7 @@ fn start_vm(
         vnc_display: qemu::free_vnc_display()?,
         websocket_port: qemu::free_port()?,
         qmp_port: qemu::free_port()?,
+        spice_port: qemu::free_port()?,
     };
     let args = qemu::build_args(&cfg, &ports);
 
@@ -368,6 +372,7 @@ fn start_vm(
         websocket_port: ports.websocket_port,
         vnc_display: ports.vnc_display,
         qmp_port: ports.qmp_port,
+        spice_port: ports.spice_port,
         paused: false, // freshly launched -> running
     };
     {
@@ -385,6 +390,7 @@ fn start_vm(
                 vnc_display: ports.vnc_display,
                 websocket_port: ports.websocket_port,
                 qmp_port: ports.qmp_port,
+                spice_port: ports.spice_port,
             },
         );
         persist_running(&app, &running);
@@ -402,9 +408,46 @@ fn running_info(state: State<'_, AppState>, name: String) -> Option<RunningInfo>
         websocket_port: rv.websocket_port,
         vnc_display: rv.vnc_display,
         qmp_port: rv.qmp_port,
+        spice_port: rv.spice_port,
         // QMP may not be ready yet during early boot; treat errors as "running".
         paused: qmp::is_paused(rv.qmp_port).unwrap_or(false),
     })
+}
+
+/// Launch the external virt-viewer (`remote-viewer`) SPICE client against a
+/// running VM. The embedded noVNC viewer keeps working independently — this is
+/// the richer client (clipboard, dynamic resolution, USB redirection). The
+/// spawned viewer is a detached, untracked GUI window; we don't manage its
+/// lifecycle (closing it just disconnects, the guest keeps running).
+#[tauri::command]
+fn open_in_viewer(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let spice_port = {
+        let mut running = state.running.lock().unwrap();
+        prune_dead(&mut running);
+        running
+            .get(&name)
+            .map(|rv| rv.spice_port)
+            .ok_or_else(|| format!("'{name}' is not running"))?
+    };
+    // A spice_port of 0 means this VM was reattached from a pre-SPICE session
+    // (its QEMU has no SPICE server). Restart the VM to get a real one.
+    if spice_port == 0 {
+        return Err(
+            "This VM was started before SPICE support — stop and start it again to \
+open it in virt-viewer."
+                .into(),
+        );
+    }
+    let viewer = qemu::viewer_binary().ok_or_else(|| {
+        "virt-viewer not found. Install it (the bundled yodawg installer adds it), or set \
+the YODAWG_VIRT_VIEWER environment variable to the full path of remote-viewer.exe."
+            .to_string()
+    })?;
+    let mut cmd = std::process::Command::new(viewer);
+    cmd.arg(format!("spice://127.0.0.1:{spice_port}"));
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to launch virt-viewer: {e}"))
 }
 
 /// Gracefully shut down a VM via QMP (ACPI power button). The guest OS decides
@@ -603,6 +646,7 @@ fn reconcile_running(app: &AppHandle) {
                 vnc_display: p.vnc_display,
                 websocket_port: p.websocket_port,
                 qmp_port: p.qmp_port,
+                spice_port: p.spice_port,
             },
         );
         survivors.push(p);
@@ -675,6 +719,7 @@ pub fn run() {
             delete_vm,
             start_vm,
             running_info,
+            open_in_viewer,
             stop_vm,
             pause_vm,
             resume_vm,

@@ -15,8 +15,10 @@ dist-ssr
 # Local test artifacts (large ISOs / disk images)
 _testdata
 
-# Bundled QEMU setup for the installer (large; fetched/copied locally)
+# Bundled installers staged for the NSIS bundle (large; fetched/copied locally):
+# QEMU setup (.exe) and the virt-viewer SPICE client (.msi).
 src-tauri/installer/*.exe
+src-tauri/installer/*.msi
 
 # Editor directories and files
 .vscode/*

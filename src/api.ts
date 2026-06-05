@@ -42,6 +42,7 @@ export interface RunningInfo {
   websocket_port: number;
   vnc_display: number;
   qmp_port: number;
+  spice_port: number;
   paused: boolean;
 }
 
@@ -115,6 +116,8 @@ export const api = {
   forceKillVm: (name: string) => invoke<void>("force_kill_vm", { name }),
   runningInfo: (name: string) =>
     invoke<RunningInfo | null>("running_info", { name }),
+  // Launch the external virt-viewer (SPICE) client against a running VM.
+  openInViewer: (name: string) => invoke<void>("open_in_viewer", { name }),
 
   // Snapshots. Single-word args (name/tag) need no camelCase mapping.
   liveSnapshotsSupported: (name: string) =>

@@ -10,7 +10,7 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
 
 ![yodawg running MS-DOS / Windows 3.1 with the Program Manager open](docs/screenshot.png)
 
-> Status: **v0.2.7**. Primary target today is **Windows native** (WHPX).
+> Status: **v0.2.10**. Primary target today is **Windows native** (WHPX).
 > Working codename, subject to change.
 
 ## Features
@@ -21,6 +21,12 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
 - **Embedded display** — the VM renders right inside the app window (QEMU VNC
   websocket + [noVNC](https://novnc.com/)), with a **Fit ⇄ 1:1** toggle. 1:1
   fixes mouse drift on guests that only have a relative pointer (DOS, Windows 3.1).
+- **SPICE via virt-viewer** — every VM also runs a SPICE server alongside the
+  embedded display. **Open in virt-viewer** launches the external
+  [virt-viewer](https://virt-manager.org/) client for clipboard sharing,
+  dynamic display resize, and USB redirection. Pick the **QXL** or **VirtIO**
+  display adapter for the best experience; the guest needs `spice-vdagent` for
+  clipboard/auto-resize. virt-viewer is bundled with the Windows installer.
 - **Lifecycle controls** — start, graceful ACPI shutdown, pause / resume, force
   kill (disk writes are flushed first so nothing is lost), and delete.
 - **Snapshots** — save and restore full VM state. Snapshots can be taken live on
@@ -82,14 +88,20 @@ cargo check --manifest-path src-tauri/Cargo.toml   # check the Rust backend
 
 `npm run tauri build` produces an NSIS installer at
 `src-tauri/target/release/bundle/nsis/yodawg_<version>_x64-setup.exe`. It
-bundles the QEMU setup and, during install, checks for QEMU at
-`C:\Program Files\qemu` — running the bundled setup silently only if it's
-missing. Because the bundled QEMU installs into Program Files, the installer is
+bundles both the **QEMU** setup and the **virt-viewer** (SPICE client)
+installer, and during install checks whether each is already present — running
+the bundled installer silently only if it's missing (QEMU at
+`C:\Program Files\qemu`; virt-viewer in any `C:\Program Files\VirtViewer*`).
+Because the bundled dependencies install into Program Files, the installer is
 **per-machine** (requires admin / one UAC prompt).
 
-Drop the QEMU Windows setup at `src-tauri/installer/qemu-w64-setup.exe` before
-building — it's gitignored (large, ~200 MB) and embedded into the installer by
-the NSIS hook in `src-tauri/installer/hooks.nsh`.
+Before building, drop the two bundled installers into `src-tauri/installer/`
+(both gitignored — large — and embedded by the NSIS hook in
+`src-tauri/installer/hooks.nsh`):
+
+- `qemu-w64-setup.exe` — the QEMU for Windows setup (~200 MB)
+- `virt-viewer.msi` — the virt-viewer MSI (~80 MB), from
+  [virt-manager.org/download](https://virt-manager.org/download/)
 
 ## How it works
 
@@ -106,9 +118,12 @@ the NSIS hook in `src-tauri/installer/hooks.nsh`.
   - `procutil.rs` — Windows PID liveness/terminate helpers for reattached VMs.
   - `lib.rs` — runtime state and the Tauri commands the frontend calls.
 
-The display uses **VNC** (QEMU's built-in VNC server with a websocket listener,
-which noVNC connects to directly — no separate proxy). Control runs over **QMP**
-(QEMU Monitor Protocol) on a TCP socket. SPICE is a future option.
+The embedded display uses **VNC** (QEMU's built-in VNC server with a websocket
+listener, which noVNC connects to directly — no separate proxy). Control runs
+over **QMP** (QEMU Monitor Protocol) on a TCP socket. Each VM *also* runs a
+**SPICE** server on loopback; the **Open in virt-viewer** button launches the
+external `remote-viewer` client against it (richer features the in-window VNC
+path can't do — clipboard, dynamic resize, USB redirection).
 
 ### Where VMs live
 
@@ -180,9 +195,30 @@ Older guests with only a relative pointing device can't track an absolute
 cursor over VNC. Click the **1:1** toggle (top-right of the display) so the
 framebuffer renders at native scale and pointer deltas map cleanly.
 
+### virt-viewer won't auto-resize the guest (esp. GNOME / Wayland)
+
+Auto-resize only works in the **virt-viewer (SPICE)** window — not the embedded
+noVNC display — and needs the guest's `spice-vdagent` installed and the VM set
+to the **QXL** or **VirtIO** display adapter. First, in virt-viewer, make sure
+**View → Automatically resize** is checked.
+
+If it still won't track — classically it *fits once on connect/login but then
+ignores window resizes*, while the login screen still resizes fine — the guest
+desktop has **pinned its resolution**. On GNOME (Wayland especially), the
+compositor stops following the SPICE size hint once a fixed resolution is saved.
+Fix it inside the guest:
+
+```bash
+rm ~/.config/monitors.xml     # remove the pinned monitor config
+# then log out and back in
+```
+
+Avoid setting an explicit resolution in **Settings → Displays** afterward —
+GNOME rewrites `monitors.xml` and re-pins it. Leave the display on its default
+and it'll keep following the virt-viewer window size.
+
 ## Roadmap
 
-- SPICE protocol (clipboard sharing, auto display-resize, USB redirection)
 - More networking beyond the current NAT / Isolated / port-forwarding: bridged
   or host-only (guest on the physical LAN — needs a TAP driver + admin on
   Windows) and VM-to-VM internal networks

@@ -17,6 +17,12 @@ pub struct PersistedVm {
     pub vnc_display: u16,
     pub websocket_port: u16,
     pub qmp_port: u16,
+    /// SPICE port for the external virt-viewer client. Defaults to 0 for
+    /// records written before this field existed (those VMs were launched
+    /// without a SPICE server, so the viewer simply won't connect — a relaunch
+    /// of the VM gets a real port).
+    #[serde(default)]
+    pub spice_port: u16,
 }
 
 fn path(app_data: &Path) -> PathBuf {
