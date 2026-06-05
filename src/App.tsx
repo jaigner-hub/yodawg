@@ -1,10 +1,38 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, VmStatus, RunningInfo } from "./api";
-import { VncViewer } from "./VncViewer";
 import { CreateVmDialog } from "./CreateVmDialog";
 import { EditVmDialog } from "./EditVmDialog";
 import { SnapshotsDialog } from "./SnapshotsDialog";
 import "./App.css";
+
+// Human-readable labels for the config enums shown in the detail panel.
+const ACCEL_LABEL: Record<string, string> = {
+  tcg: "Software (TCG)",
+  auto: "Hardware",
+};
+const DISPLAY_LABEL: Record<string, string> = {
+  std: "Standard",
+  virtio: "VirtIO",
+  qxl: "QXL",
+};
+const NET_LABEL: Record<string, string> = {
+  nat: "NAT (internet)",
+  isolated: "Isolated",
+  none: "No network",
+};
+const NIC_LABEL: Record<string, string> = {
+  e1000: "Intel e1000",
+  virtio: "VirtIO",
+  rtl8139: "RTL8139",
+  ne2k: "NE2000 (ISA)",
+};
+
+/** Last path segment of a Windows/Unix path (for showing an ISO/folder name). */
+function baseName(p?: string | null): string | null {
+  if (!p) return null;
+  const parts = p.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? p;
+}
 
 export default function App() {
   const [vms, setVms] = useState<VmStatus[]>([]);
@@ -68,6 +96,9 @@ export default function App() {
     await withErrors(async () => {
       const info = await api.startVm(name);
       setViewer(info);
+      // The display lives in virt-viewer (no embedded viewer), so open it
+      // automatically once the VM is up.
+      await api.openInViewer(name);
     });
   }
 
@@ -109,13 +140,12 @@ export default function App() {
             <header className="toolbar">
               <div className="title">
                 <h1>{current.name}</h1>
-                <span className="specs">
-                  {current.cpus} vCPU · {current.memory_mb} MB · {current.disk_size_gb} GB
-                  {current.running
-                    ? viewer?.paused
-                      ? " · paused"
-                      : " · running"
-                    : " · stopped"}
+                <span
+                  className={`status ${
+                    !current.running ? "stopped" : viewer?.paused ? "paused" : "running"
+                  }`}
+                >
+                  {!current.running ? "stopped" : viewer?.paused ? "paused" : "running"}
                 </span>
               </div>
               <div className="actions">
@@ -139,50 +169,147 @@ export default function App() {
                     >
                       Force kill
                     </button>
-                    <button onClick={() => setShowSnapshots(true)}>Snapshots</button>
-                    <button
-                      title="Open this VM in virt-viewer (SPICE) — clipboard, dynamic resolution, USB redirection"
-                      onClick={() => withErrors(() => api.openInViewer(current.name))}
-                    >
-                      Open in virt-viewer
-                    </button>
                   </>
                 ) : (
-                  <>
-                    <button className="primary" onClick={() => start(current.name)}>
-                      Start
-                    </button>
-                    <button onClick={() => setShowEdit(true)}>Edit</button>
-                    <button onClick={() => setShowSnapshots(true)}>Snapshots</button>
-                    {current.iso_path && (
-                      <button
-                        title="Boots from the disk only. DOS guests (e.g. FreeDOS) may not boot afterward if the installer didn't write the MBR — boot once with the ISO attached and run FDISK /MBR then SYS C: first."
-                        onClick={() => withErrors(() => api.detachIso(current.name))}
-                      >
-                        Eject ISO
-                      </button>
-                    )}
-                    <button
-                      className="danger"
-                      onClick={() => withErrors(() => api.deleteVm(current.name))}
-                    >
-                      Delete
-                    </button>
-                  </>
+                  <button className="primary" onClick={() => start(current.name)}>
+                    Start
+                  </button>
                 )}
               </div>
             </header>
 
-            <section className="display">
-              {viewer ? (
-                <VncViewer key={viewer.websocket_port} port={viewer.websocket_port} />
-              ) : (
-                <div className="placeholder">
-                  {current.running
-                    ? "Attaching to display…"
-                    : "VM is stopped. Press Start to boot it."}
+            <section className="detail">
+              <div className="card display-card">
+                <div className="card-head">Display</div>
+                {current.running ? (
+                  <div className="display-launch">
+                    <button
+                      className="primary"
+                      onClick={() => withErrors(() => api.openInViewer(current.name))}
+                    >
+                      ▶ Open display
+                    </button>
+                    <p className="sub">
+                      Opens in a separate virt-viewer window. Closing it just
+                      disconnects — the VM keeps running.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="sub">
+                    Start the VM to open its display in virt-viewer.
+                  </p>
+                )}
+              </div>
+
+              <div className="specs-grid">
+                <div className="spec-col">
+                  <h3>System</h3>
+                  <dl>
+                    <div>
+                      <dt>CPU</dt>
+                      <dd>{current.cpus} vCPU</dd>
+                    </div>
+                    <div>
+                      <dt>Memory</dt>
+                      <dd>{current.memory_mb} MB</dd>
+                    </div>
+                    <div>
+                      <dt>Acceleration</dt>
+                      <dd>{ACCEL_LABEL[current.acceleration] ?? current.acceleration}</dd>
+                    </div>
+                    <div>
+                      <dt>Display</dt>
+                      <dd>{DISPLAY_LABEL[current.display_adapter] ?? current.display_adapter}</dd>
+                    </div>
+                  </dl>
                 </div>
-              )}
+
+                <div className="spec-col">
+                  <h3>Network</h3>
+                  <dl>
+                    <div>
+                      <dt>Mode</dt>
+                      <dd>{NET_LABEL[current.net_mode] ?? current.net_mode}</dd>
+                    </div>
+                    {current.net_mode !== "none" && (
+                      <>
+                        <div>
+                          <dt>Adapter</dt>
+                          <dd>{NIC_LABEL[current.nic_model] ?? current.nic_model}</dd>
+                        </div>
+                        {current.mac_address && (
+                          <div>
+                            <dt>MAC</dt>
+                            <dd className="mono">{current.mac_address}</dd>
+                          </div>
+                        )}
+                        <div>
+                          <dt>Forwards</dt>
+                          <dd>
+                            {current.port_forwards.length === 0
+                              ? "—"
+                              : current.port_forwards
+                                  .map(
+                                    (f) =>
+                                      `${f.host_port}→${f.guest_port}${
+                                        f.protocol === "udp" ? "/udp" : ""
+                                      }`,
+                                  )
+                                  .join(", ")}
+                          </dd>
+                        </div>
+                      </>
+                    )}
+                  </dl>
+                </div>
+
+                <div className="spec-col">
+                  <h3>Storage</h3>
+                  <dl>
+                    <div>
+                      <dt>Disk</dt>
+                      <dd>{current.disk_size_gb} GB · qcow2</dd>
+                    </div>
+                    <div>
+                      <dt>ISO</dt>
+                      <dd>{baseName(current.iso_path) ?? "none"}</dd>
+                    </div>
+                    <div>
+                      <dt>Shared</dt>
+                      <dd>
+                        {baseName(current.shared_folder)
+                          ? `${baseName(current.shared_folder)}${
+                              current.shared_folder_writable ? " (rw)" : " (ro)"
+                            }`
+                          : "—"}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+
+              <div className="detail-actions">
+                <button onClick={() => setShowSnapshots(true)}>Snapshots</button>
+                {!current.running && (
+                  <button onClick={() => setShowEdit(true)}>Edit</button>
+                )}
+                {!current.running && current.iso_path && (
+                  <button
+                    title="Boots from the disk only. DOS guests (e.g. FreeDOS) may not boot afterward if the installer didn't write the MBR — boot once with the ISO attached and run FDISK /MBR then SYS C: first."
+                    onClick={() => withErrors(() => api.detachIso(current.name))}
+                  >
+                    Eject ISO
+                  </button>
+                )}
+                {!current.running && (
+                  <button
+                    className="danger"
+                    onClick={() => withErrors(() => api.deleteVm(current.name))}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
             </section>
           </>
         ) : (

@@ -19,7 +19,8 @@ Guidance for working in this repository.
 **yodawg** is a friendly GUI wrapper around QEMU — see [README.md](./README.md).
 Stack: **Tauri v2 + React/TypeScript** frontend, **Rust** backend that spawns and
 controls `qemu-system-x86_64`. Primary target is **Windows native** (WHPX
-acceleration); the display is **embedded noVNC** over QEMU's VNC websocket.
+acceleration); the display is served over **SPICE** and shown by the external
+**virt-viewer** client (there is no embedded/in-window display).
 
 ## ⚠️ Build environment: WSL targeting Windows
 
@@ -58,9 +59,9 @@ cd src-tauri && cargo.exe check     # check the Rust backend (run with CWD in sr
 ## Architecture
 
 Frontend (`src/`):
-- `App.tsx` — sidebar VM list + toolbar lifecycle controls + display panel.
+- `App.tsx` — sidebar VM list + toolbar lifecycle controls + a launch panel
+  (the display itself opens in external virt-viewer, not in-window).
 - `CreateVmDialog.tsx`, `EditVmDialog.tsx` — modal forms.
-- `VncViewer.tsx` — noVNC client; connects to `ws://127.0.0.1:<port>`.
 - `api.ts` — typed wrappers over `invoke(...)` and the dialog plugin.
 
 Backend (`src-tauri/src/`):
@@ -77,7 +78,8 @@ Backend (`src-tauri/src/`):
   don't hold a `Child` for); shells out to `kill` elsewhere.
 
 Commands exposed to the frontend: `detect_qemu`, `list_vms`, `create_vm`,
-`update_vm`, `detach_iso`, `delete_vm`, `start_vm`, `running_info`, `stop_vm`,
+`update_vm`, `detach_iso`, `delete_vm`, `start_vm`, `running_info`,
+`open_in_viewer`, `stop_vm`,
 `pause_vm`, `resume_vm`, `force_kill_vm`, `live_snapshots_supported`,
 `list_snapshots`, `create_snapshot`, `restore_snapshot`, `delete_snapshot`.
 
@@ -96,9 +98,13 @@ next launch instead.
 - **Tauri v2 arg casing:** JS passes **camelCase** keys; Tauri maps them to the
   Rust command's `snake_case` params. e.g. `invoke("create_vm", { memoryMb })`
   → `fn create_vm(memory_mb: u32)`. Single-word args (`name`) need no mapping.
-- **Display:** QEMU launches with `-display none -vnc 127.0.0.1:D,websocket=P`;
-  noVNC connects to port `P`. No proxy needed — QEMU's VNC server speaks the
-  websocket directly.
+- **Display:** QEMU launches with `-display none` + `-spice
+  port=S,addr=127.0.0.1,disable-ticketing=on` (plus a vdagent virtio-serial
+  channel). The external virt-viewer client (`remote-viewer spice://127.0.0.1:S`)
+  is the viewer — `lib.rs::open_in_viewer` spawns it, and the frontend opens it
+  automatically after start. There is no embedded/in-window display (SPICE has
+  no maintained web client; QEMU has no SPICE-in-browser). `qemu.rs::viewer_binary`
+  locates `remote-viewer.exe`.
 - **Control:** QMP over TCP (`-qmp tcp:127.0.0.1:Q,server,nowait`). **Not** a
   unix socket — that's Linux-only and won't work on Windows.
 - **Windows quirks handled in `qemu.rs`:** `-accel whpx` + `-cpu qemu64`

@@ -26,7 +26,6 @@ export interface VmStatus {
   shared_folder?: string | null;
   shared_folder_writable: boolean;
   running: boolean;
-  websocket_port?: number | null;
 }
 
 export interface Snapshot {
@@ -39,8 +38,6 @@ export interface Snapshot {
 
 export interface RunningInfo {
   name: string;
-  websocket_port: number;
-  vnc_display: number;
   qmp_port: number;
   spice_port: number;
   paused: boolean;

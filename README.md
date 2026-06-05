@@ -10,7 +10,7 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
 
 ![yodawg running MS-DOS / Windows 3.1 with the Program Manager open](docs/screenshot.png)
 
-> Status: **v0.2.11**. Primary target today is **Windows native** (WHPX).
+> Status: **v0.2.12**. Primary target today is **Windows native** (WHPX).
 > Working codename, subject to change.
 
 ## Features
@@ -18,15 +18,13 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
 - **Create-VM wizard** — pick an ISO, set RAM / CPU / disk size, choose a
   display and network adapter, and it creates the `qcow2` disk and boots.
 - **VM list** with live running / paused / stopped status.
-- **Embedded display** — the VM renders right inside the app window (QEMU VNC
-  websocket + [noVNC](https://novnc.com/)), with a **Fit ⇄ 1:1** toggle. 1:1
-  fixes mouse drift on guests that only have a relative pointer (DOS, Windows 3.1).
-- **SPICE via virt-viewer** — every VM also runs a SPICE server alongside the
-  embedded display. **Open in virt-viewer** launches the external
-  [virt-viewer](https://virt-manager.org/) client for clipboard sharing,
-  dynamic display resize, and USB redirection. Pick the **QXL** or **VirtIO**
-  display adapter for the best experience; the guest needs `spice-vdagent` for
-  clipboard/auto-resize. virt-viewer is bundled with the Windows installer.
+- **Display via virt-viewer (SPICE)** — each VM runs a SPICE server, and its
+  display opens in the [virt-viewer](https://virt-manager.org/) client —
+  automatically when you start a VM, or via the **Open display** button. That
+  gets you clipboard sharing, dynamic display resize, and USB redirection out of
+  the box. Pick the **QXL** or **VirtIO** display adapter for the best
+  experience; the guest needs `spice-vdagent` for clipboard/auto-resize.
+  virt-viewer is bundled with the Windows installer.
 - **Lifecycle controls** — start, graceful ACPI shutdown, pause / resume, force
   kill (disk writes are flushed first so nothing is lost), and delete.
 - **Snapshots** — save and restore full VM state. Snapshots can be taken live on
@@ -106,7 +104,7 @@ Before building, drop the two bundled installers into `src-tauri/installer/`
 ## How it works
 
 - **Frontend** (`src/`) — React + TypeScript in a Tauri webview. Renders the VM
-  list, the create/edit dialogs, and the embedded noVNC viewer.
+  list, the create/edit dialogs, and the VM lifecycle controls.
 - **Backend** (`src-tauri/src/`) — Rust. Spawns and tracks `qemu-system-x86_64`
   processes, controls them over QMP, and persists VM configs.
   - `qemu.rs` — binary discovery, acceleration/CPU selection, QEMU argument
@@ -118,12 +116,12 @@ Before building, drop the two bundled installers into `src-tauri/installer/`
   - `procutil.rs` — Windows PID liveness/terminate helpers for reattached VMs.
   - `lib.rs` — runtime state and the Tauri commands the frontend calls.
 
-The embedded display uses **VNC** (QEMU's built-in VNC server with a websocket
-listener, which noVNC connects to directly — no separate proxy). Control runs
-over **QMP** (QEMU Monitor Protocol) on a TCP socket. Each VM *also* runs a
-**SPICE** server on loopback; the **Open in virt-viewer** button launches the
-external `remote-viewer` client against it (richer features the in-window VNC
-path can't do — clipboard, dynamic resize, USB redirection).
+The display is served over **SPICE** (QEMU's `-spice` server on loopback) and
+shown by the external **virt-viewer** (`remote-viewer`) client — launched
+automatically on start, or via the **Open display** button. There's no
+in-window display: SPICE has no maintained web client, so virt-viewer is the
+viewer (and you get clipboard, dynamic resize, and USB redirection for free).
+Control runs over **QMP** (QEMU Monitor Protocol) on a TCP socket.
 
 ### Where VMs live
 
@@ -191,15 +189,15 @@ Fix it from inside the guest, one time:
 
 ### Mouse drifts or won't reach the screen edges (DOS, Windows 3.1)
 
-Older guests with only a relative pointing device can't track an absolute
-cursor over VNC. Click the **1:1** toggle (top-right of the display) so the
-framebuffer renders at native scale and pointer deltas map cleanly.
+Older guests with only a relative pointing device can drift when the display is
+scaled. In virt-viewer, set **View → Zoom → Normal (100%)** so the image renders
+at native scale and pointer motion maps cleanly. (Modern guests use the absolute
+USB tablet yodawg adds, so they track fine at any zoom.)
 
 ### virt-viewer won't auto-resize the guest (esp. GNOME / Wayland)
 
-Auto-resize only works in the **virt-viewer (SPICE)** window — not the embedded
-noVNC display — and needs the guest's `spice-vdagent` installed. Also make sure
-**View → Automatically resize** is checked in virt-viewer.
+Auto-resize needs the guest's `spice-vdagent` installed, and **View →
+Automatically resize** checked in the virt-viewer window.
 
 **On a Linux/GNOME (Wayland) guest, use the VirtIO display adapter.** virtio-gpu
 follows the virt-viewer window size reliably across reboots. **QXL** tends to

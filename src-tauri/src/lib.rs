@@ -25,8 +25,6 @@ struct RunningVm {
     /// a VM a previous session left running (we then track it by `pid`).
     child: Option<Child>,
     pid: u32,
-    vnc_display: u16,
-    websocket_port: u16,
     qmp_port: u16,
     spice_port: u16,
 }
@@ -39,12 +37,10 @@ struct AppState {
     shutting_down: AtomicBool,
 }
 
-/// Connection info the frontend needs to attach the noVNC viewer.
+/// Runtime info the frontend needs for a running VM (display launch + status).
 #[derive(Serialize, Clone)]
 struct RunningInfo {
     name: String,
-    websocket_port: u16,
-    vnc_display: u16,
     qmp_port: u16,
     spice_port: u16,
     /// Whether the guest's vCPUs are currently paused (QMP `stop`).
@@ -57,7 +53,6 @@ struct VmStatus {
     #[serde(flatten)]
     config: VmConfig,
     running: bool,
-    websocket_port: Option<u16>,
 }
 
 /// Resolve the app data directory, creating it if needed.
@@ -102,8 +97,6 @@ fn persist_running(app: &AppHandle, running: &HashMap<String, RunningVm>) {
             .map(|(name, rv)| session::PersistedVm {
                 name: name.clone(),
                 pid: rv.pid,
-                vnc_display: rv.vnc_display,
-                websocket_port: rv.websocket_port,
                 qmp_port: rv.qmp_port,
                 spice_port: rv.spice_port,
             })
@@ -135,10 +128,8 @@ fn list_vms(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<VmStatus>,
     let vms = vm::load_all(&dir)
         .into_iter()
         .map(|config| {
-            let rv = running.get(&config.name);
             VmStatus {
-                running: rv.is_some(),
-                websocket_port: rv.map(|r| r.websocket_port),
+                running: running.contains_key(&config.name),
                 config,
             }
         })
@@ -317,8 +308,6 @@ fn start_vm(
     }
 
     let ports = qemu::LaunchPorts {
-        vnc_display: qemu::free_vnc_display()?,
-        websocket_port: qemu::free_port()?,
         qmp_port: qemu::free_port()?,
         spice_port: qemu::free_port()?,
     };
@@ -334,8 +323,8 @@ fn start_vm(
 
     let mut cmd = std::process::Command::new(qemu::system_binary());
     cmd.args(&args).stdout(log).stderr(log_err);
-    // Run QEMU from its install dir so it can find data files (e.g. the VNC
-    // keymap 'en-us'), which it looks up relative to the working directory.
+    // Run QEMU from its install dir so it can find data files (e.g. keymaps
+    // like 'en-us'), which it looks up relative to the working directory.
     if let Some(qdir) = qemu::install_dir() {
         cmd.current_dir(qdir);
     }
@@ -369,8 +358,6 @@ fn start_vm(
 
     let info = RunningInfo {
         name: name.clone(),
-        websocket_port: ports.websocket_port,
-        vnc_display: ports.vnc_display,
         qmp_port: ports.qmp_port,
         spice_port: ports.spice_port,
         paused: false, // freshly launched -> running
@@ -387,8 +374,6 @@ fn start_vm(
             RunningVm {
                 child: Some(child),
                 pid,
-                vnc_display: ports.vnc_display,
-                websocket_port: ports.websocket_port,
                 qmp_port: ports.qmp_port,
                 spice_port: ports.spice_port,
             },
@@ -405,8 +390,6 @@ fn running_info(state: State<'_, AppState>, name: String) -> Option<RunningInfo>
     prune_dead(&mut running);
     running.get(&name).map(|rv| RunningInfo {
         name: name.clone(),
-        websocket_port: rv.websocket_port,
-        vnc_display: rv.vnc_display,
         qmp_port: rv.qmp_port,
         spice_port: rv.spice_port,
         // QMP may not be ready yet during early boot; treat errors as "running".
@@ -643,8 +626,6 @@ fn reconcile_running(app: &AppHandle) {
             RunningVm {
                 child: None,
                 pid: p.pid,
-                vnc_display: p.vnc_display,
-                websocket_port: p.websocket_port,
                 qmp_port: p.qmp_port,
                 spice_port: p.spice_port,
             },

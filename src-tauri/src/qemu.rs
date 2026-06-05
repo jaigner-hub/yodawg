@@ -5,7 +5,7 @@
 //!   * acceleration backend per platform (WHPX on Windows, KVM on Linux, HVF on macOS)
 //!   * a CPU model that won't crash the chosen accelerator (`-cpu max` crashes WHPX)
 //!   * the mandatory `file=` prefix on `-drive`
-//!   * VNC + websocket wiring for the embedded noVNC viewer
+//!   * SPICE wiring for the external virt-viewer client
 //!   * a QMP control socket for clean lifecycle management
 
 use crate::vm::VmConfig;
@@ -72,7 +72,7 @@ pub fn system_binary() -> String {
 }
 
 /// The QEMU install directory, if known. QEMU is launched with this as its
-/// working directory: it resolves some data files (notably the VNC keymap
+/// working directory: it resolves some data files (notably keymaps like
 /// `en-us`) relative to the CWD, which otherwise fails in the installed GUI
 /// build (launched from a system dir) — see `lib.rs::start_vm`.
 pub fn install_dir() -> Option<PathBuf> {
@@ -272,23 +272,11 @@ pub fn free_port() -> Result<u16, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Find a free VNC display number `D` (so the RFB port 5900+D is unused).
-pub fn free_vnc_display() -> Result<u16, String> {
-    for d in 0u16..100 {
-        if TcpListener::bind(("127.0.0.1", 5900 + d)).is_ok() {
-            return Ok(d);
-        }
-    }
-    Err("no free VNC display in 0..100".into())
-}
-
 /// Ports/handles assigned to a launched VM.
 pub struct LaunchPorts {
-    pub vnc_display: u16,
-    pub websocket_port: u16,
     pub qmp_port: u16,
-    /// SPICE server port for the external virt-viewer client (separate from the
-    /// VNC/noVNC path, which keeps using `vnc_display`/`websocket_port`).
+    /// SPICE server port — the display channel the external virt-viewer client
+    /// connects to. (yodawg has no embedded display; virt-viewer is the viewer.)
     pub spice_port: u16,
 }
 
@@ -335,8 +323,8 @@ pub fn viewer_binary() -> Option<String> {
 
 /// Build the full QEMU argument vector for a VM.
 ///
-/// Display strategy: `-display none` (no QEMU window) plus `-vnc` with a
-/// `websocket=` listener, which the embedded noVNC client connects to directly.
+/// Display strategy: `-display none` (no local QEMU window) plus a `-spice`
+/// server, which the external virt-viewer (remote-viewer) client connects to.
 pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
     let mut args: Vec<String> = vec![
         "-accel".into(),
@@ -475,23 +463,17 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
     args.push("-vga".into());
     args.push(vga.into());
 
-    // No native window; render over VNC with a websocket listener for noVNC.
+    // No local QEMU window — the display is served over SPICE (below) and shown
+    // by the external virt-viewer client.
     args.push("-display".into());
     args.push("none".into());
-    args.push("-vnc".into());
-    args.push(format!(
-        "127.0.0.1:{},websocket={}",
-        ports.vnc_display, ports.websocket_port
-    ));
 
-    // SPICE server, running *alongside* the VNC server above (QEMU serves both
-    // from the same console). The embedded noVNC viewer keeps using VNC; SPICE
-    // is for the external virt-viewer (remote-viewer) client, which adds
-    // clipboard sharing, dynamic resolution, and USB redirection that the VNC
-    // path can't do. We only listen on loopback, so `disable-ticketing=on`
-    // skips password auth. The vdagent channel (virtio-serial + a `vdagent`
-    // spicevmc chardev) carries guest-agent traffic for clipboard/auto-resize
-    // when the guest has spice-vdagent installed — harmless when it doesn't.
+    // SPICE server — the display channel. virt-viewer (remote-viewer) connects
+    // to it for the screen plus clipboard sharing, dynamic resolution, and USB
+    // redirection. We only listen on loopback, so `disable-ticketing=on` skips
+    // password auth. The vdagent channel (virtio-serial + a `vdagent` spicevmc
+    // chardev) carries guest-agent traffic for clipboard/auto-resize when the
+    // guest has spice-vdagent installed — harmless when it doesn't.
     args.push("-spice".into());
     args.push(format!(
         "port={},addr=127.0.0.1,disable-ticketing=on",

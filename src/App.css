@@ -188,13 +188,126 @@ button.danger:hover {
   color: var(--danger);
 }
 
-.display {
+/* Status badge next to the VM name in the toolbar. */
+.status {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--off);
+}
+.status.running {
+  color: var(--on);
+  border-color: color-mix(in srgb, var(--on) 40%, transparent);
+}
+.status.running::before {
+  background: var(--on);
+}
+.status.paused {
+  color: #d6a542;
+  border-color: color-mix(in srgb, #d6a542 40%, transparent);
+}
+.status.paused::before {
+  background: #d6a542;
+}
+
+/* ---- Detail / control panel (the display itself lives in virt-viewer) ---- */
+.detail {
   flex: 1;
-  background: #000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.card-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.display-launch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.display-card .sub {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+  max-width: 460px;
+}
+
+.specs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+.spec-col h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+.spec-col dl {
+  margin: 0;
+}
+.spec-col dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.spec-col dl > div:last-child {
+  border-bottom: none;
+}
+.spec-col dt {
+  color: var(--muted);
+}
+.spec-col dd {
+  margin: 0;
+  text-align: right;
+  word-break: break-word;
+}
+.spec-col dd.mono {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 12px;
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
 }
 
 .placeholder {
@@ -204,49 +317,6 @@ button.danger:hover {
 .placeholder.big {
   margin: auto;
   font-size: 16px;
-}
-
-/* ---- VNC viewer ---- */
-.vnc-wrap {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-}
-.vnc-canvas {
-  width: 100%;
-  height: 100%;
-}
-/* In 1:1 mode the framebuffer may exceed the panel; let it scroll instead of
-   overflowing the layout. */
-.vnc-canvas.actual {
-  overflow: auto;
-}
-.vnc-zoom-toggle {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
-  padding: 2px 8px;
-  font-size: 12px;
-  border: 1px solid #555;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #ddd;
-  cursor: pointer;
-}
-.vnc-zoom-toggle:hover {
-  background: rgba(0, 0, 0, 0.8);
-}
-.vnc-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  background: rgba(0, 0, 0, 0.6);
-  pointer-events: none;
 }
 
 /* ---- Toast ---- */

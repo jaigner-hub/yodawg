@@ -14,13 +14,12 @@ use std::path::{Path, PathBuf};
 pub struct PersistedVm {
     pub name: String,
     pub pid: u32,
-    pub vnc_display: u16,
-    pub websocket_port: u16,
     pub qmp_port: u16,
-    /// SPICE port for the external virt-viewer client. Defaults to 0 for
-    /// records written before this field existed (those VMs were launched
-    /// without a SPICE server, so the viewer simply won't connect — a relaunch
-    /// of the VM gets a real port).
+    /// SPICE port the external virt-viewer client connects to. Defaults to 0
+    /// for records written before this field existed (those VMs were launched
+    /// without a SPICE server, so the viewer can't connect — a relaunch of the
+    /// VM gets a real port). Older records also carried `vnc_display` /
+    /// `websocket_port`; those keys are now ignored on load.
     #[serde(default)]
     pub spice_port: u16,
 }
