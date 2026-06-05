@@ -8,7 +8,7 @@ great desktop UI for it. yodawg wraps QEMU so normal people can create, run, and
 manage virtual machines without touching a flag, while still getting native
 hardware acceleration (WHPX on Windows, and KVM/HVF later).
 
-![yodawg running MS-DOS / Windows 3.1 with the Program Manager open](docs/screenshot.png)
+![yodawg's VM control panel, with a guest's display open in virt-viewer](docs/screenshot.png)
 
 > Status: **v0.2.13**. Primary target today is **Windows native** (WHPX).
 > Working codename, subject to change.
