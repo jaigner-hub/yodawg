@@ -10,7 +10,7 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
 
 ![yodawg running MS-DOS / Windows 3.1 with the Program Manager open](docs/screenshot.png)
 
-> Status: **v0.2.10**. Primary target today is **Windows native** (WHPX).
+> Status: **v0.2.11**. Primary target today is **Windows native** (WHPX).
 > Working codename, subject to change.
 
 ## Features
@@ -198,24 +198,26 @@ framebuffer renders at native scale and pointer deltas map cleanly.
 ### virt-viewer won't auto-resize the guest (esp. GNOME / Wayland)
 
 Auto-resize only works in the **virt-viewer (SPICE)** window — not the embedded
-noVNC display — and needs the guest's `spice-vdagent` installed and the VM set
-to the **QXL** or **VirtIO** display adapter. First, in virt-viewer, make sure
-**View → Automatically resize** is checked.
+noVNC display — and needs the guest's `spice-vdagent` installed. Also make sure
+**View → Automatically resize** is checked in virt-viewer.
 
-If it still won't track — classically it *fits once on connect/login but then
-ignores window resizes*, while the login screen still resizes fine — the guest
-desktop has **pinned its resolution**. On GNOME (Wayland especially), the
-compositor stops following the SPICE size hint once a fixed resolution is saved.
-Fix it inside the guest:
+**On a Linux/GNOME (Wayland) guest, use the VirtIO display adapter.** virtio-gpu
+follows the virt-viewer window size reliably across reboots. **QXL** tends to
+*fit once on login, then ignore resizes* — the GNOME compositor saves the
+auto-negotiated layout to `~/.config/monitors.xml` and treats it as a pinned
+resolution on the next login, so it stops following the SPICE hint. Switching
+the VM to VirtIO (Edit → Display adapter → VirtIO, then restart) is the clean
+fix.
+
+If you need to stay on QXL, stop GNOME from re-pinning by making that file
+un-writable, inside the guest (one-time, survives reboots):
 
 ```bash
-rm ~/.config/monitors.xml     # remove the pinned monitor config
-# then log out and back in
+rm -f ~/.config/monitors.xml ~/.config/monitors.xml~
+: > ~/.config/monitors.xml          # empty = "no saved layout" → auto
+chattr +i ~/.config/monitors.xml    # immutable: GNOME can't re-pin it
+# then log out and back in   (undo later with: chattr -i ~/.config/monitors.xml)
 ```
-
-Avoid setting an explicit resolution in **Settings → Displays** afterward —
-GNOME rewrites `monitors.xml` and re-pins it. Leave the display on its default
-and it'll keep following the virt-viewer window size.
 
 ## Roadmap
 

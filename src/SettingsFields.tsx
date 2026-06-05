@@ -16,14 +16,19 @@ export function DisplaySelect({
         <option value="virtio">VirtIO — fast + resizes well (Linux/SPICE)</option>
         <option value="qxl">QXL — for virt-viewer (SPICE)</option>
       </select>
-      {(value === "qxl" || value === "virtio") && (
+      {value === "virtio" && (
         <span className="sub">
-          Best with the virt-viewer (SPICE) window for dynamic resolution.
-          Needs spice-vdagent in the guest for auto-resize. If resize stops
-          tracking on a GNOME/Wayland guest, it has pinned the resolution —
-          delete <code>~/.config/monitors.xml</code> in the guest and log back
-          in, and don't set a fixed resolution in Settings → Displays (that
-          re-creates the file).
+          Best for Linux + the virt-viewer (SPICE) window: virtio-gpu follows
+          the window size reliably for dynamic resolution. Needs spice-vdagent
+          in the guest for clipboard/auto-resize.
+        </span>
+      )}
+      {value === "qxl" && (
+        <span className="sub">
+          SPICE-native adapter. For a Linux/GNOME (Wayland) guest, prefer VirtIO
+          — QXL often resizes once then stops (GNOME re-pins the resolution in
+          <code>~/.config/monitors.xml</code>). Needs spice-vdagent for
+          clipboard/auto-resize. See the README troubleshooting note.
         </span>
       )}
     </label>
