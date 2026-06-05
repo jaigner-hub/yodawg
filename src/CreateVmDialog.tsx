@@ -64,83 +64,90 @@ export function CreateVmDialog({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2>Create a VM</h2>
 
-        <label>
-          Name
-          <input
-            autoFocus
-            value={name}
-            placeholder="ubuntu-desktop"
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
+        <div className="form-grid">
+          <div className="form-col">
+            <label>
+              Name
+              <input
+                autoFocus
+                value={name}
+                placeholder="ubuntu-desktop"
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
 
-        <label>
-          Install ISO
-          <div className="iso-row">
-            <input
-              readOnly
-              value={isoPath ?? ""}
-              placeholder="(optional — pick an .iso to boot from)"
-            />
-            <button type="button" onClick={chooseIso}>
-              Browse…
-            </button>
+            <div className="field-row">
+              <label>
+                Memory (MB)
+                <input
+                  type="number"
+                  min={256}
+                  step={256}
+                  value={memoryMb}
+                  onChange={(e) => setMemoryMb(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                CPUs
+                <input
+                  type="number"
+                  min={1}
+                  max={64}
+                  value={cpus}
+                  onChange={(e) => setCpus(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                Disk (GB)
+                <input
+                  type="number"
+                  min={1}
+                  value={diskGb}
+                  onChange={(e) => setDiskGb(Number(e.target.value))}
+                />
+              </label>
+            </div>
+
+            <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
+            <AccelSelect value={acceleration} onChange={setAcceleration} />
+
+            <label>
+              Install ISO
+              <div className="iso-row">
+                <input
+                  readOnly
+                  value={isoPath ?? ""}
+                  placeholder="(optional — pick an .iso to boot from)"
+                />
+                <button type="button" onClick={chooseIso}>
+                  Browse…
+                </button>
+              </div>
+            </label>
           </div>
-        </label>
 
-        <div className="field-row">
-          <label>
-            Memory (MB)
-            <input
-              type="number"
-              min={256}
-              step={256}
-              value={memoryMb}
-              onChange={(e) => setMemoryMb(Number(e.target.value))}
+          <div className="form-col">
+            <SharedFolderField
+              path={sharedFolder}
+              writable={sharedFolderWritable}
+              onPathChange={setSharedFolder}
+              onWritableChange={setSharedFolderWritable}
             />
-          </label>
-          <label>
-            CPUs
-            <input
-              type="number"
-              min={1}
-              max={64}
-              value={cpus}
-              onChange={(e) => setCpus(Number(e.target.value))}
-            />
-          </label>
-          <label>
-            Disk (GB)
-            <input
-              type="number"
-              min={1}
-              value={diskGb}
-              onChange={(e) => setDiskGb(Number(e.target.value))}
-            />
-          </label>
+            <NetModeSelect value={netMode} onChange={setNetMode} />
+            {netMode !== "none" && (
+              <>
+                <NicSelect value={nicModel} onChange={setNicModel} />
+                <PortForwardsEditor
+                  value={portForwards}
+                  onChange={setPortForwards}
+                />
+              </>
+            )}
+          </div>
         </div>
-
-        <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
-        <AccelSelect value={acceleration} onChange={setAcceleration} />
-        <SharedFolderField
-          path={sharedFolder}
-          writable={sharedFolderWritable}
-          onPathChange={setSharedFolder}
-          onWritableChange={setSharedFolderWritable}
-        />
-        <NetModeSelect value={netMode} onChange={setNetMode} />
-        {netMode !== "none" && (
-          <>
-            <NicSelect value={nicModel} onChange={setNicModel} />
-            <PortForwardsEditor
-              value={portForwards}
-              onChange={setPortForwards}
-            />
-          </>
-        )}
 
         {error && <p className="error">{error}</p>}
 

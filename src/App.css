@@ -351,6 +351,29 @@ button.danger:hover {
   padding: 22px;
   width: 460px;
   max-width: 92vw;
+  /* Never exceed the window; scroll within the dialog if it somehow does. */
+  max-height: 90vh;
+  overflow-y: auto;
+}
+/* Wider, two-column variant for the settings/create forms. */
+.modal.wide {
+  width: 760px;
+}
+.form-grid {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+.form-col {
+  flex: 1;
+  min-width: 0;
+}
+/* Collapse to a single column on a narrow window. */
+@media (max-width: 640px) {
+  .form-grid {
+    flex-direction: column;
+    gap: 0;
+  }
 }
 .modal h2 {
   margin: 0 0 16px;

@@ -69,83 +69,90 @@ export function EditVmDialog({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2>Settings — {vm.name}</h2>
 
-        <label>
-          Disk
-          <input
-            readOnly
-            value={`${vm.disk_size_gb} GB  (disk size can't be changed here)`}
-          />
-        </label>
+        <div className="form-grid">
+          <div className="form-col">
+            <label>
+              Disk
+              <input
+                readOnly
+                value={`${vm.disk_size_gb} GB  (disk size can't be changed here)`}
+              />
+            </label>
 
-        <label>
-          Install ISO
-          <div className="iso-row">
-            <input
-              readOnly
-              value={isoPath ?? ""}
-              placeholder="(no ISO attached)"
+            <div className="field-row">
+              <label>
+                Memory (MB)
+                <input
+                  type="number"
+                  min={256}
+                  step={256}
+                  value={memoryMb}
+                  onChange={(e) => setMemoryMb(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                CPUs
+                <input
+                  type="number"
+                  min={1}
+                  max={64}
+                  value={cpus}
+                  onChange={(e) => setCpus(Number(e.target.value))}
+                />
+              </label>
+            </div>
+
+            <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
+            <AccelSelect value={acceleration} onChange={setAcceleration} />
+
+            <label>
+              Install ISO
+              <div className="iso-row">
+                <input
+                  readOnly
+                  value={isoPath ?? ""}
+                  placeholder="(no ISO attached)"
+                />
+                <button type="button" onClick={chooseIso}>
+                  Browse…
+                </button>
+                {isoPath && (
+                  <button type="button" onClick={() => setIsoPath(null)}>
+                    Clear
+                  </button>
+                )}
+              </div>
+            </label>
+          </div>
+
+          <div className="form-col">
+            <SharedFolderField
+              path={sharedFolder}
+              writable={sharedFolderWritable}
+              onPathChange={setSharedFolder}
+              onWritableChange={setSharedFolderWritable}
             />
-            <button type="button" onClick={chooseIso}>
-              Browse…
-            </button>
-            {isoPath && (
-              <button type="button" onClick={() => setIsoPath(null)}>
-                Clear
-              </button>
+            <NetModeSelect value={netMode} onChange={setNetMode} />
+            {netMode !== "none" && (
+              <>
+                <NicSelect value={nicModel} onChange={setNicModel} />
+                {vm.mac_address && (
+                  <label>
+                    MAC address
+                    <input readOnly value={vm.mac_address} />
+                  </label>
+                )}
+                <PortForwardsEditor
+                  value={portForwards}
+                  onChange={setPortForwards}
+                />
+              </>
             )}
           </div>
-        </label>
-
-        <div className="field-row">
-          <label>
-            Memory (MB)
-            <input
-              type="number"
-              min={256}
-              step={256}
-              value={memoryMb}
-              onChange={(e) => setMemoryMb(Number(e.target.value))}
-            />
-          </label>
-          <label>
-            CPUs
-            <input
-              type="number"
-              min={1}
-              max={64}
-              value={cpus}
-              onChange={(e) => setCpus(Number(e.target.value))}
-            />
-          </label>
         </div>
-
-        <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
-        <AccelSelect value={acceleration} onChange={setAcceleration} />
-        <SharedFolderField
-          path={sharedFolder}
-          writable={sharedFolderWritable}
-          onPathChange={setSharedFolder}
-          onWritableChange={setSharedFolderWritable}
-        />
-        <NetModeSelect value={netMode} onChange={setNetMode} />
-        {netMode !== "none" && (
-          <>
-            <NicSelect value={nicModel} onChange={setNicModel} />
-            {vm.mac_address && (
-              <label>
-                MAC address
-                <input readOnly value={vm.mac_address} />
-              </label>
-            )}
-            <PortForwardsEditor
-              value={portForwards}
-              onChange={setPortForwards}
-            />
-          </>
-        )}
 
         <p className="hint">Changes take effect the next time the VM starts.</p>
         {error && <p className="error">{error}</p>}
