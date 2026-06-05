@@ -143,6 +143,25 @@ fn list_vms(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<VmStatus>,
     Ok(vms)
 }
 
+/// Normalize a shared-folder path from the UI: trim, treat empty as "none", and
+/// reject commas. The path flows into a `-drive file=fat:...,format=raw,...`
+/// option string, whose fields are comma-separated — a comma in the path would
+/// be misparsed as a drive option (QEMU's own escape is doubling, which we don't
+/// want to expose), so reject it with a clear message instead.
+fn clean_shared_folder(path: Option<String>) -> Result<Option<String>, String> {
+    let path = match path {
+        Some(p) => p.trim().to_string(),
+        None => return Ok(None),
+    };
+    if path.is_empty() {
+        return Ok(None);
+    }
+    if path.contains(',') {
+        return Err("Shared-folder path can't contain a comma".into());
+    }
+    Ok(Some(path))
+}
+
 /// Create a new VM: write its config and create its disk image.
 #[tauri::command]
 fn create_vm(
@@ -157,11 +176,14 @@ fn create_vm(
     port_forwards: Vec<vm::PortForward>,
     net_mode: String,
     acceleration: String,
+    shared_folder: Option<String>,
+    shared_folder_writable: bool,
 ) -> Result<(), String> {
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("VM name cannot be empty".into());
     }
+    let shared_folder = clean_shared_folder(shared_folder)?;
     // Reject path-unsafe characters (the name is also a directory name) and the
     // comma, which would break QEMU's `-name` option parsing and our reattach
     // identity check (qmp.rs::query_name).
@@ -195,6 +217,8 @@ fn create_vm(
         net_mode,
         mac_address,
         acceleration,
+        shared_folder,
+        shared_folder_writable,
     };
 
     // Persist config first (creates the directory), then create the disk in it.
@@ -217,6 +241,8 @@ fn update_vm(
     port_forwards: Vec<vm::PortForward>,
     net_mode: String,
     acceleration: String,
+    shared_folder: Option<String>,
+    shared_folder_writable: bool,
 ) -> Result<(), String> {
     if memory_mb < 64 {
         return Err("Memory must be at least 64 MB".into());
@@ -224,6 +250,7 @@ fn update_vm(
     if cpus < 1 {
         return Err("Need at least 1 CPU".into());
     }
+    let shared_folder = clean_shared_folder(shared_folder)?;
     let dir = app_data(&app)?;
     let mut cfg = vm::load(&dir, &name)?;
     cfg.memory_mb = memory_mb;
@@ -234,6 +261,8 @@ fn update_vm(
     cfg.port_forwards = port_forwards;
     cfg.net_mode = net_mode;
     cfg.acceleration = acceleration;
+    cfg.shared_folder = shared_folder;
+    cfg.shared_folder_writable = shared_folder_writable;
     // Backfill a stable MAC for VMs created before the field existed.
     if cfg.mac_address.is_none() {
         cfg.mac_address = Some(qemu::derive_mac(&cfg.name));

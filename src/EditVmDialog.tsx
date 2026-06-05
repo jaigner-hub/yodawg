@@ -6,6 +6,7 @@ import {
   NicSelect,
   NetModeSelect,
   PortForwardsEditor,
+  SharedFolderField,
 } from "./SettingsFields";
 
 /** Modal form for editing a stopped VM's settings (memory, CPUs, ISO). */
@@ -27,6 +28,12 @@ export function EditVmDialog({
   const [netMode, setNetMode] = useState(vm.net_mode ?? "nat");
   const [portForwards, setPortForwards] = useState<PortForward[]>(
     vm.port_forwards ?? []
+  );
+  const [sharedFolder, setSharedFolder] = useState<string | null>(
+    vm.shared_folder ?? null
+  );
+  const [sharedFolderWritable, setSharedFolderWritable] = useState(
+    vm.shared_folder_writable ?? false
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +57,8 @@ export function EditVmDialog({
         port_forwards: portForwards,
         net_mode: netMode,
         acceleration,
+        shared_folder: sharedFolder,
+        shared_folder_writable: sharedFolderWritable,
       });
       onSaved();
     } catch (e) {
@@ -115,6 +124,12 @@ export function EditVmDialog({
 
         <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
         <AccelSelect value={acceleration} onChange={setAcceleration} />
+        <SharedFolderField
+          path={sharedFolder}
+          writable={sharedFolderWritable}
+          onPathChange={setSharedFolder}
+          onWritableChange={setSharedFolderWritable}
+        />
         <NetModeSelect value={netMode} onChange={setNetMode} />
         {netMode !== "none" && (
           <>

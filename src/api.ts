@@ -23,6 +23,8 @@ export interface VmStatus {
   net_mode: string; // "nat" | "isolated" | "none"
   mac_address?: string | null;
   acceleration: string; // "auto" | "tcg"
+  shared_folder?: string | null;
+  shared_folder_writable: boolean;
   running: boolean;
   websocket_port?: number | null;
 }
@@ -54,6 +56,8 @@ export interface CreateVmParams {
   port_forwards: PortForward[];
   net_mode: string; // "nat" | "isolated" | "none"
   acceleration: string; // "auto" | "tcg"
+  shared_folder?: string | null;
+  shared_folder_writable: boolean;
 }
 
 export const api = {
@@ -73,6 +77,8 @@ export const api = {
       portForwards: p.port_forwards,
       netMode: p.net_mode,
       acceleration: p.acceleration,
+      sharedFolder: p.shared_folder ?? null,
+      sharedFolderWritable: p.shared_folder_writable,
     }),
   updateVm: (p: {
     name: string;
@@ -84,6 +90,8 @@ export const api = {
     port_forwards: PortForward[];
     net_mode: string;
     acceleration: string;
+    shared_folder?: string | null;
+    shared_folder_writable: boolean;
   }) =>
     invoke<void>("update_vm", {
       name: p.name,
@@ -95,6 +103,8 @@ export const api = {
       portForwards: p.port_forwards,
       netMode: p.net_mode,
       acceleration: p.acceleration,
+      sharedFolder: p.shared_folder ?? null,
+      sharedFolderWritable: p.shared_folder_writable,
     }),
   detachIso: (name: string) => invoke<void>("detach_iso", { name }),
   deleteVm: (name: string) => invoke<void>("delete_vm", { name }),
@@ -125,4 +135,8 @@ export const api = {
       directory: false,
       filters: [{ name: "Disk image", extensions: ["iso", "img"] }],
     }) as Promise<string | null>,
+
+  // Native folder picker for choosing a host folder to share into the guest.
+  pickFolder: () =>
+    open({ multiple: false, directory: true }) as Promise<string | null>,
 };

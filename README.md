@@ -30,8 +30,13 @@ hardware acceleration (WHPX on Windows, and KVM/HVF later).
   set up host→guest **port forwarding**, and choose the NIC model (Intel e1000,
   VirtIO, RTL8139, NE2000 for DOS). Each VM keeps a **stable MAC** so DHCP leases
   and MAC-bound licenses survive reboots.
+- **Shared folder** — share a host folder into the guest as a virtual FAT disk
+  (QEMU vvfat) to move files in without networking. Read-only by default; an
+  optional (experimental) writable mode lets the guest write back. See
+  [Moving files in and out of a VM](#moving-files-in-and-out-of-a-vm).
 - **Edit settings** — change RAM, CPUs, display/network adapter, networking mode,
-  port forwards, and the attached ISO of a stopped VM; eject the ISO.
+  port forwards, the shared folder, and the attached ISO of a stopped VM; eject
+  the ISO.
 - **Just works defaults** — acceleration and a safe CPU model are auto-selected
   per platform; absolute-pointer mouse (USB tablet) so the cursor tracks 1:1;
   disk-first boot order so installed systems boot themselves.
@@ -111,10 +116,42 @@ which noVNC connects to directly — no separate proxy). Control runs over **QMP
 %APPDATA%/com.yodawg.app/
 ├── running.json              # VMs left running/paused in the background
 └── machines/<name>/
-    ├── vm.json               # VM config (RAM, CPU, disk, ISO, adapters, port forwards, ...)
+    ├── vm.json               # VM config (RAM, CPU, disk, ISO, adapters, port forwards, shared folder, ...)
     ├── disk.qcow2            # virtual disk (also holds snapshots)
     └── qemu.log             # QEMU stdout/stderr from the last launch
 ```
+
+## Moving files in and out of a VM
+
+Two built-in ways to get files across the host/guest boundary, no extra tools
+on the host:
+
+**Shared folder (vvfat).** In the create or edit dialog, pick a **Shared
+folder**. On the next start, that host folder appears inside the guest as a
+small extra disk formatted FAT:
+
+- **Linux guests:** it shows up as a second disk (e.g. `/dev/sdb1`) — mount it
+  with `mount /dev/sdb1 /mnt` (the partition is FAT, type `vfat`).
+- **Windows guests:** it auto-assigns a new drive letter.
+- **DOS guests:** it's an extra drive letter (e.g. `D:`).
+
+Anything you drop in the host folder shows up in the guest. It's **read-only by
+default** — solid and safe for copying files *in*. Ticking **Allow the guest to
+write back** enables vvfat's read-write mode so the guest can save files back to
+the host folder, but that mode is fragile and **can corrupt the folder's
+contents** under heavy or concurrent writes, so treat it as experimental and
+don't point it at anything irreplaceable. Changes to the shared-folder setting
+take effect the next time the VM starts.
+
+> vvfat presents a *snapshot* of the folder taken at boot. If you add files to
+> the host folder while the guest is already running, restart the guest (or
+> remount the drive inside it) to see them.
+
+**Port forwarding.** For a robust two-way channel — especially for large files —
+add a host→guest **port forward** under Networking and run a server in the
+guest: e.g. an SSH/SFTP server (then `scp` to `127.0.0.1:<hostPort>` from the
+host) or a quick `python3 -m http.server` to pull files over a browser. This
+needs the guest online (NAT or Isolated mode — port forwards work in both).
 
 ## Troubleshooting
 

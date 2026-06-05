@@ -1,4 +1,4 @@
-import { PortForward } from "./api";
+import { api, PortForward } from "./api";
 
 /** Display-adapter (VGA model) picker, shared by the create/edit dialogs. */
 export function DisplaySelect({
@@ -81,6 +81,66 @@ export function NetModeSelect({
         <option value="isolated">Isolated — no host/internet access</option>
         <option value="none">None — no network adapter</option>
       </select>
+    </label>
+  );
+}
+
+/**
+ * Shared-folder picker, shared by the create/edit dialogs. Exposes a host
+ * folder to the guest as a virtual FAT disk (QEMU vvfat). Read-only by default;
+ * the "allow writes" checkbox opts into vvfat's fragile read-write mode.
+ */
+export function SharedFolderField({
+  path,
+  writable,
+  onPathChange,
+  onWritableChange,
+}: {
+  path: string | null;
+  writable: boolean;
+  onPathChange: (v: string | null) => void;
+  onWritableChange: (v: boolean) => void;
+}) {
+  async function choose() {
+    const picked = await api.pickFolder();
+    if (picked) onPathChange(picked);
+  }
+
+  return (
+    <label>
+      Shared folder <span className="sub">host → guest, via FAT disk</span>
+      <div className="iso-row">
+        <input
+          readOnly
+          value={path ?? ""}
+          placeholder="(optional — share a host folder into the guest)"
+        />
+        <button type="button" onClick={choose}>
+          Browse…
+        </button>
+        {path && (
+          <button type="button" onClick={() => onPathChange(null)}>
+            Clear
+          </button>
+        )}
+      </div>
+      {path && (
+        <>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={writable}
+              onChange={(e) => onWritableChange(e.target.checked)}
+            />
+            Allow the guest to write back (experimental)
+          </label>
+          <span className="sub">
+            Mounts as a second drive in the guest. Writable sharing can corrupt
+            the folder — for two-way transfer, copying files in on the host and
+            reading them in the guest is safest.
+          </span>
+        </>
+      )}
     </label>
   );
 }

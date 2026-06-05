@@ -87,6 +87,18 @@ pub struct VmConfig {
     /// avoids entirely. See `qemu.rs::effective_accel`.
     #[serde(default = "default_acceleration")]
     pub acceleration: String,
+    /// Absolute path to a host folder shared into the guest as a virtual FAT
+    /// disk (QEMU vvfat). The guest sees it as a second drive it can mount;
+    /// dropping files in the folder on the host makes them appear in the guest.
+    /// `None`/empty means no shared folder. See `qemu.rs::build_args`.
+    #[serde(default)]
+    pub shared_folder: Option<String>,
+    /// Whether the shared folder is writable from the guest (vvfat `rw:`).
+    /// Read-only by default: writable vvfat lets the guest write back to the
+    /// host folder but is known to be fragile (it can corrupt the folder's
+    /// contents), so it's strictly opt-in. See `qemu.rs::build_args`.
+    #[serde(default)]
+    pub shared_folder_writable: bool,
 }
 
 /// The directory holding all machine subdirectories.

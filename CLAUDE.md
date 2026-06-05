@@ -119,6 +119,14 @@ next launch instead.
   next launch reattaches them (see the lifecycle note under Architecture). The
   cost is that a VM can keep running if yodawg is never reopened — reconcile on
   launch is the cleanup, not a kill-on-close Job Object.
+- **Shared folder (`qemu.rs`):** an optional `shared_folder` host path is mounted
+  into the guest as a virtual FAT disk via vvfat — `-drive
+  file=fat:<dir>,format=raw,index=1` (read-only) or `file=fat:rw:<dir>,...` when
+  `shared_folder_writable` is set. `index=1` keeps it clear of the boot disk
+  (index 0) and `-cdrom` (index 2). Writable vvfat is fragile (can corrupt the
+  folder), so it's opt-in; the path is comma-rejected in `lib.rs` because it
+  flows into a comma-separated `-drive` option string. SMB sharing
+  (`-netdev user,smb=`) is Linux-host-only, so vvfat is the Windows answer.
 - **Adding a command:** write the `#[tauri::command]` in `lib.rs`, add it to the
   `generate_handler![...]` list, then add a wrapper in `src/api.ts`. New plugin
   permissions go in `src-tauri/capabilities/default.json`.

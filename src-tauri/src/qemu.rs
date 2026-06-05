@@ -323,6 +323,22 @@ pub fn build_args(cfg: &VmConfig, ports: &LaunchPorts) -> Vec<String> {
         cfg.name.clone(),
     ];
 
+    // Shared folder: expose a host directory to the guest as a virtual FAT disk
+    // (vvfat). `file=fat:<dir>` is read-only; `file=fat:rw:<dir>` lets the guest
+    // write back to the host folder — convenient but fragile (vvfat's rw path is
+    // known to corrupt the directory under heavy/concurrent writes), so it's
+    // opt-in via `shared_folder_writable`. `format=raw` skips image-format
+    // probing (vvfat isn't a real file), and an explicit `index=1` (IDE primary
+    // slave) keeps it clear of the boot disk (index 0) and the `-cdrom` (index
+    // 2) so it never displaces the boot device.
+    if let Some(dir) = &cfg.shared_folder {
+        if !dir.is_empty() {
+            let rw = if cfg.shared_folder_writable { "rw:" } else { "" };
+            args.push("-drive".into());
+            args.push(format!("file=fat:{rw}{dir},format=raw,index=1"));
+        }
+    }
+
     // Attach the install ISO when present. Boot order is hard-disk-first with
     // CD-ROM fallback (`order=cd`: c=disk, d=cdrom): a blank disk falls through
     // to the installer, but once the OS is installed the disk boots itself —

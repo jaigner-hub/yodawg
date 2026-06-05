@@ -361,6 +361,17 @@ button.danger:hover {
   margin-top: 5px;
   white-space: nowrap;
 }
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+.checkbox-row input {
+  width: auto;
+  margin-top: 0;
+}
 .field-row {
   display: flex;
   gap: 12px;

@@ -6,6 +6,7 @@ import {
   NicSelect,
   NetModeSelect,
   PortForwardsEditor,
+  SharedFolderField,
 } from "./SettingsFields";
 
 /** Modal form that collects the fields needed to create + boot a new VM. */
@@ -26,6 +27,8 @@ export function CreateVmDialog({
   const [nicModel, setNicModel] = useState("e1000");
   const [netMode, setNetMode] = useState("nat");
   const [portForwards, setPortForwards] = useState<PortForward[]>([]);
+  const [sharedFolder, setSharedFolder] = useState<string | null>(null);
+  const [sharedFolderWritable, setSharedFolderWritable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +52,8 @@ export function CreateVmDialog({
         port_forwards: portForwards,
         net_mode: netMode,
         acceleration,
+        shared_folder: sharedFolder,
+        shared_folder_writable: sharedFolderWritable,
       });
       onCreated(name.trim());
     } catch (e) {
@@ -120,6 +125,12 @@ export function CreateVmDialog({
 
         <DisplaySelect value={displayAdapter} onChange={setDisplayAdapter} />
         <AccelSelect value={acceleration} onChange={setAcceleration} />
+        <SharedFolderField
+          path={sharedFolder}
+          writable={sharedFolderWritable}
+          onPathChange={setSharedFolder}
+          onWritableChange={setSharedFolderWritable}
+        />
         <NetModeSelect value={netMode} onChange={setNetMode} />
         {netMode !== "none" && (
           <>
